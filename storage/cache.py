@@ -34,6 +34,12 @@ CREATE TABLE IF NOT EXISTS collections (
     data TEXT,
     added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS search_results (
+    query TEXT PRIMARY KEY,
+    results TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 class CacheDatabase:
@@ -75,3 +81,32 @@ class CacheDatabase:
                 data_dict["cross_references"] = [CrossReference(**cr) for cr in data_dict["cross_references"]]
             records.append(PatentRecord(**data_dict))
         return records
+
+    def get_cached_search(self, query: str) -> list[PatentRecord] | None:
+        """Retrieve cached search results if they are less than 30 days old."""
+        with self.get_connection() as conn:
+            row = conn.execute(
+                "SELECT results FROM search_results WHERE query = ? AND updated_at > datetime('now', '-30 days')",
+                (query,)
+            ).fetchone()
+            
+        if not row:
+            return None
+            
+        data_list = json.loads(row["results"])
+        records = []
+        for data_dict in data_list:
+            if "cross_references" in data_dict:
+                data_dict["cross_references"] = [CrossReference(**cr) for cr in data_dict["cross_references"]]
+            records.append(PatentRecord(**data_dict))
+        return records
+
+    def save_search_results(self, query: str, records: list[PatentRecord]):
+        """Save search results to the cache."""
+        with self.get_connection() as conn:
+            data = json.dumps([dataclasses.asdict(r) for r in records])
+            conn.execute(
+                "INSERT OR REPLACE INTO search_results (query, results, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                (query, data)
+            )
+            conn.commit()

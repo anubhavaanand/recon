@@ -2,6 +2,7 @@ import asyncio
 from typing import List
 from core.models import PatentRecord
 from clients.patent_apis import USPTOClient, EPOClient, WIPOClient, LensClient, GooglePatentsClient
+from storage.cache import CacheDatabase
 
 def sort_and_merge_results(records: List[PatentRecord]) -> List[PatentRecord]:
     """
@@ -17,7 +18,13 @@ def sort_and_merge_results(records: List[PatentRecord]) -> List[PatentRecord]:
 async def search_all(query: str) -> List[PatentRecord]:
     """
     Fetches results concurrently from all configured clients and merges them.
+    Checks cache before hitting APIs.
     """
+    db = CacheDatabase()
+    cached = db.get_cached_search(query)
+    if cached:
+        return sort_and_merge_results(cached)
+
     clients = [
         USPTOClient(),
         EPOClient(),
@@ -38,5 +45,9 @@ async def search_all(query: str) -> List[PatentRecord]:
         elif isinstance(res, Exception):
             # We log dry errors, but do not fail the whole search
             print(f"ERR: Search source failed: {res}")
+    
+    merged = sort_and_merge_results(all_records)
+    if merged:
+        db.save_search_results(query, merged)
             
-    return sort_and_merge_results(all_records)
+    return merged
