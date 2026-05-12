@@ -95,72 +95,141 @@ class SearchScreen(Screen):
             await result_list.append(ResultListItem(record))
             
         if results:
+            # Set index AND manually populate preview for first item
             result_list.index = 0
+            
+            first_record = results[0]
+            info_tab = self.query_one(InfoTab)
+            claims_tab = self.query_one(ClaimsTab)
+            image_tab = self.query_one(ImageTab)
+            
+            # Load first item preview immediately
+            info_tab.update_record(first_record)
+            claims_tab.reset()
+            image_tab.reset()
+            
+            # Load claims if Claims tab is active
+            tabs = self.query_one(TabbedContent)
+            if tabs.active and "claims" in str(tabs.active).lower():
+                await claims_tab.load_claims(first_record)
 
     async def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
-        info_tab = self.query_one(InfoTab)
-        claims_tab = self.query_one(ClaimsTab)
-        image_tab = self.query_one(ImageTab)
-        
-        # Reset all tabs on new selection
-        claims_tab.reset()
-        image_tab.reset()
-        
-        if event.item and hasattr(event.item, "record"):
-            record = event.item.record
-            info_tab.update_record(record)
+        try:
+            self.notify("📋 Item highlighted")
             
-            # Lazy load based on active tab
-            tabs = self.query_one(TabbedContent)
-            await self._load_active_tab(tabs.active, record)
-        else:
-            info_tab.update_record(None)
+            info_tab = self.query_one(InfoTab)
+            claims_tab = self.query_one(ClaimsTab)
+            image_tab = self.query_one(ImageTab)
+            
+            logger.debug(f"✓ Found tab widgets: InfoTab, ClaimsTab, ImageTab")
+            
+            # Reset all tabs on new selection
+            claims_tab.reset()
+            image_tab.reset()
+            
+            if event.item and hasattr(event.item, "record"):
+                record = event.item.record
+                logger.debug(f"Loading record: {record.id}")
+                self.notify(f"Loading: {record.id}")
+                
+                info_tab.update_record(record)
+                logger.debug(f"✓ Called info_tab.update_record()")
+                
+                # Lazy load based on active tab
+                tabs = self.query_one(TabbedContent)
+                active_tab_id = tabs.active
+                logger.debug(f"Active tab ID: {active_tab_id} (type: {type(active_tab_id)})")
+                
+                await self._load_active_tab(active_tab_id, record)
+            else:
+                info_tab.update_record(None)
+                logger.debug(f"No item or record in highlighted event")
+        except Exception as e:
+            logger.error(f"Error in on_list_view_highlighted: {e}", exc_info=True)
+            self.notify(f"❌ Error: {str(e)}", severity="error")
 
     async def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
-        result_list = self.query_one(ResultList)
-        if result_list.index is not None and result_list.index >= 0:
-            item = result_list.get_item_at(result_list.index)
-            if hasattr(item, "record"):
-                await self._load_active_tab(event.tab.id, item.record)
+        try:
+            result_list = self.query_one(ResultList)
+            item = result_list.highlighted_child
+            
+            tab_id = event.tab.id
+            logger.debug(f"Tab activated: {tab_id} (type: {type(tab_id)})")
+            self.notify(f"📑 Tab: {tab_id}")
+            
+            if item is not None and hasattr(item, "record"):
+                logger.debug(f"Loading tab content for {item.record.id}")
+                await self._load_active_tab(tab_id, item.record)
+            else:
+                logger.debug(f"No item selected when tab activated")
+        except Exception as e:
+            logger.error(f"Error in on_tabbed_content_tab_activated: {e}", exc_info=True)
+            self.notify(f"❌ Tab Error: {str(e)}", severity="error")
 
     async def _load_active_tab(self, active_tab_id: str, record):
+        logger.debug(f"_load_active_tab called with: {active_tab_id!r} (type: {type(active_tab_id).__name__})")
+        
         if not active_tab_id:
+            logger.debug(f"No active_tab_id provided")
             return
-        if "tab_claims" in active_tab_id:
-            claims_tab = self.query_one(ClaimsTab)
-            if not claims_tab.is_loaded:
-                await claims_tab.load_claims(record)
-        elif "tab_image" in active_tab_id:
-            image_tab = self.query_one(ImageTab)
-            if not image_tab.is_loaded:
-                await image_tab.load_image(record)
+        
+        # Strip Textual's automatic "--content-tab-" prefix if present
+        tab_id_str = str(active_tab_id).lower()
+        if tab_id_str.startswith("--content-tab-"):
+            tab_id_str = tab_id_str.replace("--content-tab-", "")
+            logger.debug(f"✓ Stripped tab ID prefix: {active_tab_id!r} → {tab_id_str!r}")
+        
+        try:
+            # Match normalized tab ID
+            if "info" in tab_id_str or tab_id_str == "tab_info":
+                logger.debug(f"Info tab active - already loaded in on_list_view_highlighted")
+            elif "claims" in tab_id_str or tab_id_str == "tab_claims":
+                logger.debug(f"Loading claims...")
+                claims_tab = self.query_one(ClaimsTab)
+                if not claims_tab.is_loaded:
+                    logger.debug(f"Calling claims_tab.load_claims()...")
+                    await claims_tab.load_claims(record)
+                    logger.debug(f"✓ Claims loaded")
+                else:
+                    logger.debug(f"Claims already loaded")
+            elif "image" in tab_id_str or tab_id_str == "tab_image":
+                logger.debug(f"Loading image...")
+                image_tab = self.query_one(ImageTab)
+                if not image_tab.is_loaded:
+                    logger.debug(f"Calling image_tab.load_image()...")
+                    await image_tab.load_image(record)
+                    logger.debug(f"✓ Image loaded")
+                else:
+                    logger.debug(f"Image already loaded")
+            else:
+                logger.debug(f"⚠ Unknown tab ID format after normalization: {tab_id_str!r}")
+        except Exception as e:
+            logger.error(f"Error in _load_active_tab: {e}", exc_info=True)
 
     def action_save_collection(self) -> None:
         result_list = self.query_one(ResultList)
-        if result_list.index is not None and result_list.index >= 0:
-            item = result_list.get_item_at(result_list.index)
-            if hasattr(item, "record"):
-                db = CacheDatabase()
-                db.save_to_collection(item.record)
-                self.notify(f"Saved {item.record.id} to collection.")
+        item = result_list.highlighted_child
+        if item is not None and hasattr(item, "record"):
+            db = CacheDatabase()
+            db.save_to_collection(item.record)
+            self.notify(f"Saved {item.record.id} to collection.")
 
     def action_reader_mode(self) -> None:
         result_list = self.query_one(ResultList)
-        if result_list.index is not None and result_list.index >= 0:
-            item = result_list.get_item_at(result_list.index)
-            if hasattr(item, "record"):
-                self.app.push_screen(ReaderModeScreen(item.record))
+        item = result_list.highlighted_child
+        if item is not None and hasattr(item, "record"):
+            self.app.push_screen(ReaderModeScreen(item.record))
 
     def action_export_collection(self) -> None:
         """Export current collection via CLI."""
-        from cli.export import export_json
+        from cli.export import export_records
         try:
             db = CacheDatabase()
-            records = db.get_all_records()
+            records = db.get_collection()
             if not records:
                 self.notify("Collection is empty. Nothing to export.")
                 return
-            export_json(records, "collection_export.json")
+            export_records(records, "json", "collection_export.json")
             self.notify(f"Exported {len(records)} patents to collection_export.json")
         except Exception as e:
             self.notify(f"Export failed: {str(e)}", severity="error")
@@ -168,10 +237,9 @@ class SearchScreen(Screen):
     def action_download_patent(self) -> None:
         """Download current patent."""
         result_list = self.query_one(ResultList)
-        if result_list.index is not None and result_list.index >= 0:
-            item = result_list.get_item_at(result_list.index)
-            if hasattr(item, "record"):
-                self.notify(f"Download queued for {item.record.id}")
+        item = result_list.highlighted_child
+        if item is not None and hasattr(item, "record"):
+            self.notify(f"Download queued for {item.record.id}")
         else:
             self.notify("No patent selected. Nothing to download.")
 

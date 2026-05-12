@@ -24,3 +24,6 @@ test = [
 
 [tool.setuptools.packages.find]
 include = ["cli", "tui", "core", "clients", "storage"]
+
+[project.scripts]
+recon = "cli.main:app"
