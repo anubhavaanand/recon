@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "recon"
+version = "0.1.0"
+description = "Terminal-native patent research tool"
+requires-python = ">=3.12"
+dependencies = [
+    "textual",
+    "httpx",
+    "Pillow",
+    "rapidfuzz",
+    "typer",
+    "fpdf2"
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-asyncio"
+]
+
+[tool.setuptools.packages.find]
+include = ["cli", "tui", "core", "clients", "storage"]
