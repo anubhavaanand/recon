@@ -21,11 +21,11 @@ description: "Task list for RECON Patent Research Tool implementation"
 
 **Purpose**: Core infrastructure that must be complete before any user story can be implemented.
 
-- [ ] T001 [P] [Setup] Initialize Python 3.12+ project structure (`cli/`, `tui/`, `core/`, `clients/`, `storage/`).
-- [ ] T002 [P] [Setup] Configure linting, formatting, and `pytest` with `pytest-asyncio`.
-- [ ] T003 [Foundational] Define `PatentRecord` and `CrossReference` pydantic/dataclass entities in `core/models.py`.
-- [ ] T004 [Foundational] Implement SQLite cache schema (`search_results`, `patent_details`, `collections`, `cross_references`) in `storage/cache.py`.
-- [ ] T005 [Foundational] Create `httpx` base async client with auto-backoff and dry error logging (`ERR: Source [API] rate limit exceeded`) in `clients/patent_apis.py`.
+- [x] T001 [P] [Setup] Initialize Python 3.12+ project structure (`cli/`, `tui/`, `core/`, `clients/`, `storage/`).
+- [x] T002 [P] [Setup] Configure linting, formatting, and `pytest` with `pytest-asyncio`.
+- [x] T003 [Foundational] Define `PatentRecord` and `CrossReference` pydantic/dataclass entities in `core/models.py`.
+- [x] T004 [Foundational] Implement SQLite cache schema (`search_results`, `patent_details`, `collections`, `cross_references`) in `storage/cache.py`.
+- [x] T005 [Foundational] Create `httpx` base async client with auto-backoff and dry error logging (`ERR: Source [API] rate limit exceeded`) in `clients/patent_apis.py`.
 
 **Checkpoint**: Foundation ready - US1 implementation can begin.
 
@@ -36,18 +36,18 @@ description: "Task list for RECON Patent Research Tool implementation"
 **Goal**: Core terminal-native search with descending sort, keyboard navigation, and <50ms cache-backed previews.
 
 ### Tests for User Story 1 (Must fail first)
-- [ ] T006 [P] [US1] Write failing mock tests for USPTO, EPO, WIPO, Google Patents, and Lens search clients.
-- [ ] T007 [P] [US1] Write failing Textual async pilot test for list navigation ensuring <50ms preview update.
-- [ ] T008 [P] [US1] Write failing tests to assert descending sort logic strictly never drops entries.
+- [x] T006 [P] [US1] Write failing mock tests for USPTO, EPO, WIPO, Google Patents, and Lens search clients.
+- [x] T007 [P] [US1] Write failing Textual async pilot test for list navigation ensuring <50ms preview update.
+- [x] T008 [P] [US1] Write failing tests to assert descending sort logic strictly never drops entries.
 
 ### Implementation for User Story 1
-- [ ] T009 [US1] Implement API wrappers for primary search sources in `clients/patent_apis.py`.
-- [ ] T010 [US1] Build `core/search.py` using `asyncio.gather` for concurrent fetching and merging.
-- [ ] T011 [US1] Implement missing data flagger mapping `None` to `[?]` or `UNKNOWN` in `PatentRecord` processing.
-- [ ] T012 [P] [US1] Create `ResultList` Textual widget in `tui/widgets/result_list.py`.
-- [ ] T013 [P] [US1] Create `InfoTab` Textual preview widget in `tui/widgets/info_tab.py`.
-- [ ] T014 [US1] Wire up `SearchScreen` layout in `tui/screens.py`, binding keyboard events to update preview from SQLite cache.
-- [ ] T015 [US1] Integrate `typer` CLI entrypoint in `cli/main.py` to launch the Textual app.
+- [x] T009 [US1] Implement API wrappers for primary search sources in `clients/patent_apis.py`.
+- [x] T010 [US1] Build `core/search.py` using `asyncio.gather` for concurrent fetching and merging.
+- [x] T011 [US1] Implement missing data flagger mapping `None` to `[?]` or `UNKNOWN` in `PatentRecord` processing.
+- [x] T012 [P] [US1] Create `ResultList` Textual widget in `tui/widgets/result_list.py`.
+- [x] T013 [P] [US1] Create `InfoTab` Textual preview widget in `tui/widgets/info_tab.py`.
+- [x] T014 [US1] Wire up `SearchScreen` layout in `tui/screens.py`, binding keyboard events to update preview from SQLite cache.
+- [x] T015 [US1] Integrate `typer` CLI entrypoint in `cli/main.py` to launch the Textual app.
 
 **Checkpoint**: Search executes, results populate, keyboard navigation updates the Info tab instantly.
 
@@ -58,14 +58,14 @@ description: "Task list for RECON Patent Research Tool implementation"
 **Goal**: Expand preview to Info/Claims/Image tabs. Implement terminal-native image rendering with fallback.
 
 ### Tests for User Story 2 (Must fail first)
-- [ ] T016 [P] [US2] Write failing tests for terminal protocol detection (Kitty/iTerm2/Sixel).
-- [ ] T017 [P] [US2] Write failing tests verifying lazy-loading mechanism (`speed over depth` constraint).
+- [x] T016 [P] [US2] Write failing tests for terminal protocol detection (Kitty/iTerm2/Sixel).
+- [x] T017 [P] [US2] Write failing tests verifying lazy-loading mechanism (`speed over depth` constraint).
 
 ### Implementation for User Story 2
-- [ ] T018 [US2] Implement Textual `TabbedContent` with Info, Claims, and Image tabs in `tui/screens.py`.
-- [ ] T019 [US2] Build `claims_tab.py` with an async fetcher bound to `on_tab_activated` to lazy-load claims.
-- [ ] T020 [US2] Implement `Pillow` based terminal image generator in `tui/widgets/image_tab.py`.
-- [ ] T021 [US2] Implement OS-level external viewer fallback for unsupported images/terminals, logging dry error.
+- [x] T018 [US2] Implement Textual `TabbedContent` with Info, Claims, and Image tabs in `tui/screens.py`.
+- [x] T019 [US2] Build `claims_tab.py` with an async fetcher bound to `on_tab_activated` to lazy-load claims.
+- [x] T020 [US2] Implement `Pillow` based terminal image generator in `tui/widgets/image_tab.py`.
+- [x] T021 [US2] Implement OS-level external viewer fallback for unsupported images/terminals, logging dry error.
 
 **Checkpoint**: Tabs toggle smoothly. Claims load on-demand. Images render natively or open externally.
 
@@ -76,13 +76,13 @@ description: "Task list for RECON Patent Research Tool implementation"
 **Goal**: Deterministic entity matching against NIH, NSF, SEC, OpenAlex, arXiv, OpenCorporates.
 
 ### Tests for User Story 3 (Must fail first)
-- [ ] T022 [P] [US3] Write failing tests for `rapidfuzz` entity matching.
-- [ ] T023 [P] [US3] Write failing tests explicitly verifying equal-weight scoring logic calculates purely `1+1=2`.
+- [x] T022 [P] [US3] Write failing tests for `rapidfuzz` entity matching.
+- [x] T023 [P] [US3] Write failing tests explicitly verifying equal-weight scoring logic calculates purely `1+1=2`.
 
 ### Implementation for User Story 3
-- [ ] T024 [P] [US3] Implement `clients/intelligence.py` for query execution against external datasets.
-- [ ] T025 [US3] Implement deterministic entity matching algorithm in `core/scoring.py`.
-- [ ] T026 [US3] Update `InfoTab` in `tui/widgets/info_tab.py` to display the transparent intelligence signals.
+- [x] T024 [P] [US3] Implement `clients/intelligence.py` for query execution against external datasets.
+- [x] T025 [US3] Implement deterministic entity matching algorithm in `core/scoring.py`.
+- [x] T026 [US3] Update `InfoTab` in `tui/widgets/info_tab.py` to display the transparent intelligence signals.
 
 **Checkpoint**: Cross-referenced intelligence shows exact matching metadata and pure sum score.
 
@@ -93,13 +93,13 @@ description: "Task list for RECON Patent Research Tool implementation"
 **Goal**: Save patents to local SQLite collection, export cleanly via CLI, read securely in UI.
 
 ### Tests for User Story 4 (Must fail first)
-- [ ] T027 [P] [US4] Write failing tests for CSV, JSON, BibTeX, Markdown, and PDF export integrity.
+- [x] T027 [P] [US4] Write failing tests for CSV, JSON, BibTeX, Markdown, and PDF export integrity.
 
 ### Implementation for User Story 4
-- [ ] T028 [US4] Add local Collection saving hotkey (`s`) bound to SQLite update in `tui/screens.py`.
-- [ ] T029 [P] [US4] Implement formatters in `cli/export.py` (utilizing standard libs + basic formatting).
+- [x] T028 [US4] Add local Collection saving hotkey (`s`) bound to SQLite update in `tui/screens.py`.
+- [x] T029 [P] [US4] Implement formatters in `cli/export.py` (utilizing standard libs + basic formatting).
 - [ ] T030 [US4] Add `typer` subcommands in `cli/main.py` for exporting collections (e.g., `recon export --format csv`).
-- [ ] T031 [US4] Create `ReaderModeScreen` in `tui/screens.py` that hides left list pane for full-screen reading.
+- [x] T031 [US4] Create `ReaderModeScreen` in `tui/screens.py` that hides left list pane for full-screen reading.
 
 **Checkpoint**: Patents can be saved, exported from the CLI, and viewed cleanly in reader mode.
 

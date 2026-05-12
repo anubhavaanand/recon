@@ -1,19 +1,72 @@
 import typer
+import asyncio
 from typing import Optional
 from tui.app import ReconApp
 from storage.cache import CacheDatabase
 from cli.export import export_records
 from core.config import load_config, save_config, Config
+from core.search import search_all
+from rich.console import Console
+from rich.table import Table
 
 app = typer.Typer()
 config_app = typer.Typer()
 app.add_typer(config_app, name="config", help="Manage API keys and settings.")
+console = Console()
 
 @app.command()
-def search():
-    """Launch the terminal-native patent research tool."""
-    ui = ReconApp()
-    ui.run()
+def search(query: Optional[str] = typer.Argument(None, help="Patent search query (optional - launches TUI if omitted)")):
+    """
+    Search for patents.
+    
+    Without a query: launches interactive TUI.
+    With a query: performs CLI search and displays results.
+    """
+    if query is None:
+        # Launch interactive TUI mode
+        ui = ReconApp()
+        ui.run()
+    else:
+        # CLI search mode
+        try:
+            console.print(f"[cyan]Searching for: {query}[/cyan]")
+            results = asyncio.run(search_all(query))
+            
+            if not results:
+                console.print("[yellow]No results found.[/yellow]")
+                raise typer.Exit(code=0)
+            
+            # Display results in a table
+            table = Table(title=f"Search Results ({len(results)} patents)")
+            table.add_column("ID", style="cyan", no_wrap=True)
+            table.add_column("Title", style="green")
+            table.add_column("Filed", style="magenta")
+            table.add_column("Assignee", style="yellow")
+            
+            for record in results[:50]:  # Limit to 50 results for display
+                filed_date = record.dates.get("filed", "[?]") if record.dates else "[?]"
+                table.add_row(
+                    record.id or "[?]",
+                    (record.title or "[?]")[:55],
+                    filed_date,
+                    (record.assignee or "[?]")[:35]
+                )
+            
+            console.print(table)
+            console.print(f"\n[green]✓ Displayed {min(50, len(results))} of {len(results)} results[/green]")
+            
+            # Cache search results and add to collection for export
+            if len(results) > 0:
+                db = CacheDatabase()
+                db.save_search_results(query, results)
+                # Add all results to collection so they can be exported
+                for record in results:
+                    db.save_to_collection(record)
+                console.print(f"[blue]ℹ {len(results)} results cached and added to collection. Use 'recon export --format json' to export.[/blue]")
+                
+        except Exception as e:
+            console.print(f"[red]ERR: Search failed. {str(e)}[/red]")
+            raise typer.Exit(code=1)
 
 @app.command()
 def export(format: str = typer.Option(..., "--format", "-f", help="Export format: csv, json, bibtex, markdown, pdf")):
