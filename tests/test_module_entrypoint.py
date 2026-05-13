@@ -11,3 +11,6 @@ def test_python_module_entrypoint_runs_help():
 
     assert result.returncode == 0
     assert "Usage" in result.stdout
+    assert "search" in result.stdout
+    assert "export" in result.stdout
+    assert result.stderr == ""
