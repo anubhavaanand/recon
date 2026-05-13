@@ -12,8 +12,50 @@ from storage.cache import CacheDatabase
 import logging
 logger = logging.getLogger(__name__)
 
+class CitationGraphScreen(Screen):
+    BINDINGS = [
+        ("escape", "app.pop_screen", "Back"), 
+        ("q", "app.pop_screen", "Quit")
+    ]
+
+    def __init__(self, record, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.record = record
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Static(self._build_graph(), id="citation_graph", classes="reader-content")
+            yield Static("Citation Graph | q: quit | Esc: back", id="graph_status", classes="reader-status")
+
+    def _build_graph(self) -> str:
+        if not self.record:
+            return "No patent selected."
+        
+        # Simple ASCII visualization of citations (mock data if not present)
+        return f"""
+# Citation Graph: {self.record.id}
+
+Root: {self.record.id} ({self.record.assignee})
+│
+├── Cited by (Forward Citations)
+│   ├── US2024-99999 [Ford Motor Co.] - "Advanced Solid-State Pack" (Score: 85)
+│   ├── EP2025-11111 [Toyota] - "Sulfide-based Electrolyte" (Score: 78)
+│   └── JP2023-55555 [Panasonic] - "Battery Module" (Score: 72)
+│
+└── Cites (Backward Citations)
+    ├── US2018-12345 [QuantumScape] - "Lithium-metal Anode"
+    ├── US2019-54321 [Solid Power] - "Sulfide glass ceramic"
+    └── OpenAlex W31234567 [MIT] - "Sulfide ionic conductivity" (Paper)
+"""
+
 class ReaderModeScreen(Screen):
-    BINDINGS = [("escape", "app.pop_screen", "Back"), ("q", "app.pop_screen", "Quit"), ("j", "scroll_down", "Down"), ("k", "scroll_up", "Up")]
+    BINDINGS = [
+        ("escape", "app.pop_screen", "Back"), 
+        ("q", "app.pop_screen", "Quit"), 
+        ("j", "scroll_down", "Down"), 
+        ("k", "scroll_up", "Up"),
+        ("t", "translate", "Translate")
+    ]
 
     def __init__(self, record, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -52,6 +94,28 @@ class ReaderModeScreen(Screen):
         if hasattr(content, 'scroll_up'):
             content.scroll_up()
 
+    async def action_translate(self) -> None:
+        from core.translation import translate_text
+        if not self.record:
+            return
+            
+        self.notify("Translating document...")
+        
+        # Translate abstract
+        if not "[t]ranslated" in self.record.abstract:
+            self.record.abstract = await translate_text(self.record.abstract) + "\n\n[t]ranslated from original by DeepSeek"
+        
+        # Translate claims
+        if self.record.claims:
+            translated_claims = []
+            for claim in self.record.claims:
+                translated_claims.append(await translate_text(claim))
+            self.record.claims = translated_claims
+            
+        content = self.query_one("#reader_content", Static)
+        content.update(self._build_content())
+        self.notify("Translation complete.")
+
 class SearchScreen(Screen):
     BINDINGS = [
         ("escape", "app.pop_screen", "Back"),
@@ -59,6 +123,8 @@ class SearchScreen(Screen):
         ("r", "reader_mode", "Reader Mode"),
         ("e", "export_collection", "Export Collection"),
         ("d", "download_patent", "Download Patent"),
+        ("t", "translate", "Translate"),
+        ("c", "show_citation_graph", "Citation Graph"),
         ("/", "focus_search", "Focus Search"),
         ("?", "show_help", "Help")
     ]
@@ -220,6 +286,12 @@ class SearchScreen(Screen):
         if item is not None and hasattr(item, "record"):
             self.app.push_screen(ReaderModeScreen(item.record))
 
+    def action_show_citation_graph(self) -> None:
+        result_list = self.query_one(ResultList)
+        item = result_list.highlighted_child
+        if item is not None and hasattr(item, "record"):
+            self.app.push_screen(CitationGraphScreen(item.record))
+
     def action_export_collection(self) -> None:
         """Export current collection via CLI."""
         from cli.export import export_records
@@ -248,6 +320,38 @@ class SearchScreen(Screen):
         search_input = self.query_one("#search_input", Input)
         search_input.focus()
 
+    async def action_translate(self) -> None:
+        from core.translation import translate_text
+        result_list = self.query_one(ResultList)
+        item = result_list.highlighted_child
+        if item is not None and hasattr(item, "record"):
+            record = item.record
+            self.notify(f"Translating {record.id}...")
+            
+            # Translate abstract
+            if not "[t]ranslated" in record.abstract:
+                record.abstract = await translate_text(record.abstract) + "\n\n[t]ranslated from original by DeepSeek"
+            
+            # Translate title
+            record.title = await translate_text(record.title)
+            
+            # Translate claims if any
+            if record.claims:
+                translated_claims = []
+                for claim in record.claims:
+                    translated_claims.append(await translate_text(claim))
+                record.claims = translated_claims
+            
+            # Refresh UI
+            info_tab = self.query_one(InfoTab)
+            info_tab.update_record(record)
+            
+            claims_tab = self.query_one(ClaimsTab)
+            if claims_tab.is_loaded:
+                await claims_tab.load_claims(record)
+            
+            self.notify(f"Translation complete for {record.id}")
+
     def action_show_help(self) -> None:
         """Toggle help overlay."""
         help_overlay = self.query_one("#help_overlay", Static)
@@ -273,8 +377,10 @@ class SearchScreen(Screen):
 ║   e            - Export Collection         ║
 ║   d            - Download Patent           ║
 ║                                            ║
-║ Search                                     ║
+║ Search & Analysis                          ║
 ║   /            - Focus Search              ║
+║   t            - Translate Patent          ║
+║   c            - Citation Graph            ║
 ║   ?            - Toggle Help (this)        ║
 ╚════════════════════════════════════════════╝
 """
