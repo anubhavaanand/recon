@@ -1,7 +1,25 @@
 [
   {
+    "id": "EP123",
+    "title": "EPO battery",
+    "assignee": "Mock Assignee",
+    "dates": {
+      "filed": "2020-01-02"
+    },
+    "abstract": "Mock abstract",
+    "claims": [
+      "[?]"
+    ],
+    "image_urls": [
+      "[?]"
+    ],
+    "status": "active",
+    "family_id": "F123",
+    "cross_references": []
+  },
+  {
     "id": "GOOG123",
-    "title": "Google solid state battery",
+    "title": "Google battery",
     "assignee": "Mock Assignee",
     "dates": {
       "filed": "2020-01-05"
@@ -19,28 +37,10 @@
   },
   {
     "id": "LENS123",
-    "title": "Lens solid state battery",
+    "title": "Lens battery",
     "assignee": "Mock Assignee",
     "dates": {
       "filed": "2020-01-04"
-    },
-    "abstract": "Mock abstract",
-    "claims": [
-      "[?]"
-    ],
-    "image_urls": [
-      "[?]"
-    ],
-    "status": "active",
-    "family_id": "F123",
-    "cross_references": []
-  },
-  {
-    "id": "EP123",
-    "title": "EPO solid state battery",
-    "assignee": "Mock Assignee",
-    "dates": {
-      "filed": "2020-01-02"
     },
     "abstract": "Mock abstract",
     "claims": [
