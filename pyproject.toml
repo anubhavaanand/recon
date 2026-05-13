@@ -23,4 +23,4 @@ test = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["cli", "tui", "core", "clients", "storage"]
+include = ["recon", "cli", "tui", "core", "clients", "storage"]
