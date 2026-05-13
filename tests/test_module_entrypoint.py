@@ -7,7 +7,6 @@ def test_python_module_entrypoint_runs_help():
         [sys.executable, "-m", "recon", "--help"],
         capture_output=True,
         text=True,
-        cwd="/home/runner/work/recon/recon",
     )
 
     assert result.returncode == 0
