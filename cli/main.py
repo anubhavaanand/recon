@@ -115,5 +115,30 @@ def config_show():
     typer.echo(f"EPO Consumer Key: {mask(config.epo_consumer_key)}")
     typer.echo(f"EPO Consumer Secret: {mask(config.epo_consumer_secret)}")
 
+@config_app.command("test")
+def config_test():
+    """Test configured API keys."""
+    from clients.patent_apis import USPTOClient, EPOClient
+    import asyncio
+    
+    async def run_tests():
+        console.print("[cyan]Testing API Keys...[/cyan]")
+        uspto = USPTOClient()
+        epo = EPOClient()
+        
+        uspto_ok, uspto_msg = await uspto.validate_credentials()
+        if uspto_ok:
+            console.print(f"[green]✓ {uspto_msg}[/green]")
+        else:
+            console.print(f"[red]✗ {uspto_msg}[/red]")
+            
+        epo_ok, epo_msg = await epo.validate_credentials()
+        if epo_ok:
+            console.print(f"[green]✓ {epo_msg}[/green]")
+        else:
+            console.print(f"[red]✗ {epo_msg}[/red]")
+            
+    asyncio.run(run_tests())
+
 if __name__ == "__main__":
     app()
