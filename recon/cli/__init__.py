@@ -1,3 +1,3 @@
-from recon.cli.main import app
+from cli.export import export_records
 
-__all__ = ["app"]
+__all__ = ["export_records"]
