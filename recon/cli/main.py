@@ -9,7 +9,7 @@ app.add_typer(config_app, name="config", help="Manage API keys and settings.")
 @app.command()
 def search():
     """Launch the terminal-native patent research tool."""
-    from recon.tui.app import ReconApp
+    from recon.tui import ReconApp
 
     ui = ReconApp()
     ui.run()
@@ -18,8 +18,8 @@ def search():
 @app.command()
 def export(format: str = typer.Option(..., "--format", "-f", help="Export format: csv, json, bibtex, markdown, pdf")):
     """Export the local patent collection."""
-    from recon.storage.cache import CacheDatabase
-    from recon.cli.export import export_records
+    from recon.storage import CacheDatabase
+    from recon.cli import export_records
 
     db = CacheDatabase()
     records = db.get_collection()
@@ -44,7 +44,7 @@ def config_set(
     epo_secret: Optional[str] = typer.Option(None, "--epo-secret", help="EPO Consumer Secret"),
 ):
     """Set API keys for patent sources."""
-    from recon.core.config import load_config, save_config
+    from recon.core import load_config, save_config
 
     config = load_config()
     if uspto_key:
@@ -61,12 +61,12 @@ def config_set(
 @config_app.command("show")
 def config_show():
     """Show current configuration (keys partially hidden)."""
-    from recon.core.config import load_config
+    from recon.core import load_config
 
     config = load_config()
 
-    def mask(s):
-        return f"{s[:4]}...{s[-4:]}" if s and len(s) > 8 else "****"
+    def mask(secret: Optional[str]) -> str:
+        return f"{secret[:4]}...{secret[-4:]}" if secret and len(secret) > 8 else "****"
 
     typer.echo(f"USPTO API Key: {mask(config.uspto_api_key)}")
     typer.echo(f"EPO Consumer Key: {mask(config.epo_consumer_key)}")
