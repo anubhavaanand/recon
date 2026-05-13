@@ -1,0 +1,226 @@
+{
+  "timestamp": "2026-05-13T13:51:42.202375Z",
+  "summary": {
+    "total_benchmarks": 12,
+    "thresholds_met": 12,
+    "regressions_detected": 0
+  },
+  "results": [
+    {
+      "test_name": "search_latency_first_result",
+      "metrics": {
+        "unit": "ms",
+        "runs": 5,
+        "p50": 0.03,
+        "p95": 0.024,
+        "p99": 0.024,
+        "mean": 0.038,
+        "std_dev": 0.018,
+        "min": 0.024,
+        "max": 0.068
+      },
+      "threshold_met": true,
+      "regression_detected": false,
+      "previous_baseline": null,
+      "notes": ""
+    },
+    {
+      "test_name": "search_latency_with_filtering",
+      "metrics": {
+        "unit": "ms",
+        "runs": 5,
+        "p50": 0.135,
+        "p95": 0.096,
+        "p99": 0.096,
+        "mean": 0.133,
+        "std_dev": 0.032,
+        "min": 0.095,
+        "max": 0.171
+      },
+      "threshold_met": true,
+      "regression_detected": false,
+      "previous_baseline": null,
+      "notes": ""
+    },
+    {
+      "test_name": "navigation_preview_update_latency",
+      "metrics": {
+        "unit": "ms",
+        "runs": 10,
+        "p50": 0.001,
+        "p95": 0.001,
+        "p99": 0.001,
+        "mean": 0.002,
+        "std_dev": 0.002,
+        "min": 0.001,
+        "max": 0.008
+      },
+      "threshold_met": true,
+      "regression_detected": false,
+      "previous_baseline": null,
+      "notes": ""
+    },
+    {
+      "test_name": "navigation_large_content",
+      "metrics": {
+        "unit": "ms",
+        "runs": 8,
+        "p50": 0.001,
+        "p95": 0.001,
+        "p99": 0.001,
+        "mean": 0.002,
+        "std_dev": 0.002,
+        "min": 0.001,
+        "max": 0.006
+      },
+      "threshold_met": true,
+      "regression_detected": false,
+      "previous_baseline": null,
+      "notes": ""
+    },
+    {
+      "test_name": "tab_switch_latency",
+      "metrics": {
+        "unit": "ms",
+        "runs": 10,
+        "p50": 0.0,
+        "p95": 0.0,
+        "p99": 0.0,
+        "mean": 0.001,
+        "std_dev": 0.001,
+        "min": 0.0,
+        "max": 0.003
+      },
+      "threshold_met": true,
+      "regression_detected": false,
+      "previous_baseline": null,
+      "notes": ""
+    },
+    {
+      "test_name": "tab_switch_with_images",
+      "metrics": {
+        "unit": "ms",
+        "runs": 8,
+        "p50": 0.002,
+        "p95": 0.002,
+        "p99": 0.002,
+        "mean": 0.008,
+        "std_dev": 0.011,
+        "min": 0.002,
+        "max": 0.034
+      },
+      "threshold_met": true,
+      "regression_detected": false,
+      "previous_baseline": null,
+      "notes": ""
+    },
+    {
+      "test_name": "memory_under_load",
+      "metrics": {
+        "unit": "MB",
+        "runs": 4,
+        "p50": 0.205,
+        "p95": 0.004,
+        "p99": 0.004,
+        "mean": 0.421,
+        "std_dev": 0.595,
+        "min": 0.004,
+        "max": 1.27
+      },
+      "threshold_met": true,
+      "regression_detected": false,
+      "previous_baseline": null,
+      "notes": ""
+    },
+    {
+      "test_name": "memory_leak_detection",
+      "metrics": {
+        "unit": "MB",
+        "runs": 20,
+        "p50": 0.0,
+        "p95": 0.0,
+        "p99": 0.0,
+        "mean": 0.0,
+        "std_dev": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "threshold_met": true,
+      "regression_detected": false,
+      "previous_baseline": null,
+      "notes": ""
+    },
+    {
+      "test_name": "cpu_during_search",
+      "metrics": {
+        "unit": "%",
+        "runs": 5,
+        "p50": 0.0,
+        "p95": 0.0,
+        "p99": 0.0,
+        "mean": 9.73,
+        "std_dev": 21.757,
+        "min": 0.0,
+        "max": 48.65
+      },
+      "threshold_met": true,
+      "regression_detected": false,
+      "previous_baseline": null,
+      "notes": ""
+    },
+    {
+      "test_name": "cache_hit_performance",
+      "metrics": {
+        "unit": "ms",
+        "runs": 20,
+        "p50": 0.001,
+        "p95": 0.0,
+        "p99": 0.0,
+        "mean": 0.001,
+        "std_dev": 0.001,
+        "min": 0.0,
+        "max": 0.003
+      },
+      "threshold_met": true,
+      "regression_detected": false,
+      "previous_baseline": null,
+      "notes": ""
+    },
+    {
+      "test_name": "cache_miss_performance",
+      "metrics": {
+        "unit": "ms",
+        "runs": 10,
+        "p50": 0.003,
+        "p95": 0.002,
+        "p99": 0.002,
+        "mean": 0.004,
+        "std_dev": 0.002,
+        "min": 0.002,
+        "max": 0.01
+      },
+      "threshold_met": true,
+      "regression_detected": false,
+      "previous_baseline": null,
+      "notes": ""
+    },
+    {
+      "test_name": "full_search_navigation",
+      "metrics": {
+        "unit": "ms",
+        "runs": 3,
+        "p50": 0.078,
+        "p95": 0.069,
+        "p99": 0.069,
+        "mean": 0.093,
+        "std_dev": 0.034,
+        "min": 0.069,
+        "max": 0.132
+      },
+      "threshold_met": true,
+      "regression_detected": false,
+      "previous_baseline": null,
+      "notes": ""
+    }
+  ]
+}
