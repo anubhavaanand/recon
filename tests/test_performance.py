@@ -865,7 +865,7 @@ def benchmark_report(request):
     for result in _recorder.results:
         status = "✓" if result.threshold_met else "✗"
         print(
-            f"\n{status} {result.test_name}")
+            f"\n{status} {result.test_name}"
             f"  p50: {result.metrics.p50:.2f} {result.metrics.unit}"
             f"  p95: {result.metrics.p95:.2f} {result.metrics.unit}"
             f"  p99: {result.metrics.p99:.2f} {result.metrics.unit}"

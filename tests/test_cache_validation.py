@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 
 from core.models import PatentRecord
-from storage.cache import CacheManager
+from storage.cache import CacheDatabase
 
 
 # ============================================================================
@@ -34,7 +34,7 @@ from storage.cache import CacheManager
 def cache(tmp_path):
     """Create a temporary cache for testing."""
     db_path = tmp_path / "cache_test.db"
-    cache_manager = CacheManager(str(db_path))
+    cache_manager = CacheDatabase(str(db_path))
     yield cache_manager
     # Cleanup is automatic via tmp_path
 
