@@ -24,49 +24,51 @@ def search(query: Optional[str] = typer.Argument(None, help="Patent search query
     """
     if query is None:
         # Launch interactive TUI mode
+        print("DEBUG: Launching ReconApp TUI...")
         ui = ReconApp()
         ui.run()
-    else:
-        # CLI search mode
-        try:
-            console.print(f"[cyan]Searching for: {query}[/cyan]")
-            results = asyncio.run(search_all(query))
+        return
+
+    # CLI search mode
+    try:
+        console.print(f"[cyan]Searching for: {query}[/cyan]")
+        results = asyncio.run(search_all(query))
+        
+        if not results:
+            console.print("[yellow]No results found.[/yellow]")
+            raise typer.Exit(code=0)
+        
+        # Display results in a table
+        table = Table(title=f"Search Results ({len(results)} patents)")
+        table.add_column("ID", style="cyan", no_wrap=True)
+        table.add_column("Title", style="green")
+        table.add_column("Filed", style="magenta")
+        table.add_column("Assignee", style="yellow")
+        
+        for record in results[:50]:  # Limit to 50 results for display
+            filed_date = record.dates.get("filed", "[?]") if record.dates else "[?]"
+            table.add_row(
+                record.id or "[?]",
+                (record.title or "[?]")[:55],
+                filed_date,
+                (record.assignee or "[?]")[:35]
+            )
+        
+        console.print(table)
+        console.print(f"\n[green]✓ Displayed {min(50, len(results))} of {len(results)} results[/green]")
+        
+        # Cache search results and add to collection for export
+        if len(results) > 0:
+            db = CacheDatabase()
+            db.save_search_results(query, results)
+            # Add all results to collection so they can be exported
+            for record in results:
+                db.save_to_collection(record)
+            console.print(f"[blue]ℹ {len(results)} results cached and added to collection. Use 'recon export --format json' to export.[/blue]")
             
-            if not results:
-                console.print("[yellow]No results found.[/yellow]")
-                raise typer.Exit(code=0)
-            
-            # Display results in a table
-            table = Table(title=f"Search Results ({len(results)} patents)")
-            table.add_column("ID", style="cyan", no_wrap=True)
-            table.add_column("Title", style="green")
-            table.add_column("Filed", style="magenta")
-            table.add_column("Assignee", style="yellow")
-            
-            for record in results[:50]:  # Limit to 50 results for display
-                filed_date = record.dates.get("filed", "[?]") if record.dates else "[?]"
-                table.add_row(
-                    record.id or "[?]",
-                    (record.title or "[?]")[:55],
-                    filed_date,
-                    (record.assignee or "[?]")[:35]
-                )
-            
-            console.print(table)
-            console.print(f"\n[green]✓ Displayed {min(50, len(results))} of {len(results)} results[/green]")
-            
-            # Cache search results and add to collection for export
-            if len(results) > 0:
-                db = CacheDatabase()
-                db.save_search_results(query, results)
-                # Add all results to collection so they can be exported
-                for record in results:
-                    db.save_to_collection(record)
-                console.print(f"[blue]ℹ {len(results)} results cached and added to collection. Use 'recon export --format json' to export.[/blue]")
-                
-        except Exception as e:
-            console.print(f"[red]ERR: Search failed. {str(e)}[/red]")
-            raise typer.Exit(code=1)
+    except Exception as e:
+        console.print(f"[red]ERR: Search failed. {str(e)}[/red]")
+        raise typer.Exit(code=1)
 
 @app.command()
 def export(format: str = typer.Option(..., "--format", "-f", help="Export format: csv, json, bibtex, markdown, pdf")):
@@ -88,24 +90,39 @@ def export(format: str = typer.Option(..., "--format", "-f", help="Export format
 
 @config_app.command("set")
 def config_set(
-    uspto_key: Optional[str] = typer.Option(None, "--uspto-key", help="USPTO API Key"),
-    epo_key: Optional[str] = typer.Option(None, "--epo-key", help="EPO Consumer Key"),
-    epo_secret: Optional[str] = typer.Option(None, "--epo-secret", help="EPO Consumer Secret"),
-    lens_key: Optional[str] = typer.Option(None, "--lens-key", help="Lens API Key"),
+    uspto_key: Optional[str] = typer.Option(None, "--uspto-key", help="USPTO API Key (Insecure: use interactive mode instead)"),
+    epo_key: Optional[str] = typer.Option(None, "--epo-key", help="EPO Consumer Key (Insecure)"),
+    epo_secret: Optional[str] = typer.Option(None, "--epo-secret", help="EPO Consumer Secret (Insecure)"),
+    lens_key: Optional[str] = typer.Option(None, "--lens-key", help="Lens API Key (Insecure)"),
 ):
     """Set API keys for patent sources."""
     config = load_config()
-    if uspto_key:
-        config.uspto_api_key = uspto_key
-    if epo_key:
-        config.epo_consumer_key = epo_key
-    if epo_secret:
-        config.epo_consumer_secret = epo_secret
-    if lens_key:
-        config.lens_api_key = lens_key
+    
+    # If any keys are provided via CLI, update them and warn the user
+    if any([uspto_key, epo_key, epo_secret, lens_key]):
+        console.print("[red]WARNING: Providing API keys via CLI arguments is insecure. They may be leaked in shell history or process lists.[/red]")
+        if uspto_key: config.uspto_api_key = uspto_key
+        if epo_key: config.epo_consumer_key = epo_key
+        if epo_secret: config.epo_consumer_secret = epo_secret
+        if lens_key: config.lens_api_key = lens_key
+    else:
+        # Fallback to secure interactive mode
+        console.print("[yellow]Enter your API keys (leave blank to keep current):[/yellow]")
+        
+        uspto = typer.prompt("USPTO API Key", default=config.uspto_api_key or "", hide_input=True, show_default=False)
+        if uspto: config.uspto_api_key = uspto
+            
+        epo_k = typer.prompt("EPO Consumer Key", default=config.epo_consumer_key or "", hide_input=True, show_default=False)
+        if epo_k: config.epo_consumer_key = epo_k
+            
+        epo_s = typer.prompt("EPO Consumer Secret", default=config.epo_consumer_secret or "", hide_input=True, show_default=False)
+        if epo_s: config.epo_consumer_secret = epo_s
+            
+        lens = typer.prompt("Lens API Key", default=config.lens_api_key or "", hide_input=True, show_default=False)
+        if lens: config.lens_api_key = lens
     
     save_config(config)
-    typer.echo("Configuration updated successfully.")
+    typer.echo("Configuration updated successfully and secured (chmod 600).")
 
 @config_app.command("show")
 def config_show():
