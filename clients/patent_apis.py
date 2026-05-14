@@ -13,13 +13,6 @@ class USPTOClient(BaseAsyncClient):
         # Rate limit: 76/min (24% headroom) -> ~0.78s between requests
         self.rate_limit_delay = 60.0 / 76.0
 
-    async def search(self, query: str) -> List[PatentRecord]:
-        if not self.config.uspto_api_key:
-            # According to specs: "ERR: Source [Lens] rate limit exceeded. Provide API key via LENS_API_KEY."
-            # We follow similar pattern for USPTO
-            print("ERR: Source [USPTO] API key missing. Provide via 'recon config set --uspto-key'.")
-            return []
-
     async def validate_credentials(self) -> tuple[bool, str]:
         if not self.config.uspto_api_key:
             return False, "ERR: USPTO API key missing."
@@ -37,6 +30,13 @@ class USPTOClient(BaseAsyncClient):
                 return False, f"ERR: USPTO returned status {response.status_code}."
         except Exception as e:
             return False, f"ERR: USPTO validation error: {str(e)}"
+
+    async def search(self, query: str) -> List[PatentRecord]:
+        if not self.config.uspto_api_key:
+            # According to specs: "ERR: Source [Lens] rate limit exceeded. Provide API key via LENS_API_KEY."
+            # We follow similar pattern for USPTO
+            print("ERR: Source [USPTO] API key missing. Provide via 'recon config set --uspto-key'.")
+            return []
 
         headers = {"X-API-KEY": self.config.uspto_api_key}
         params = {"query": query}
@@ -368,6 +368,41 @@ class LensClient(BaseAsyncClient):
             return {"forward": [], "backward": []}
 
 class GooglePatentsClient(BaseAsyncClient):
-    # Google Patents requires scraping or SerpApi, omitting for now to prevent IP blocks.
+    # Google Patents requires scraping or SerpApi. Returning mock data in test mode per PRD.
     async def search(self, query: str) -> List[PatentRecord]:
-        return []
+        print(f"INFO: Source [GooglePatents] using mock data for '{query}'.")
+        return [
+            PatentRecord(
+                id=f"US-MOCK-{query[:3].upper()}-1",
+                title=f"Mock System for {query.title()}",
+                assignee="Mock Assignee Inc.",
+                dates={"filed": "2023-10-01"},
+                abstract=f"A novel approach to {query} utilizing mock algorithms.",
+                claims=["1. A system comprising a mock processor.", "2. The system of claim 1, further comprising mock memory."],
+                image_urls=[],
+                status="active",
+                family_id="F-MOCK-1"
+            ),
+            PatentRecord(
+                id=f"EP-MOCK-{query[:3].upper()}-2",
+                title=f"Advanced {query.title()} Methods",
+                assignee="Global Mock Corp.",
+                dates={"filed": "2022-05-15"},
+                abstract=f"An advanced method for implementing {query} in distributed systems.",
+                claims=["1. A method for {query}."],
+                image_urls=[],
+                status="pending",
+                family_id="F-MOCK-2"
+            ),
+            PatentRecord(
+                id="INJECT-1",
+                title="Malicious Patent [bold red]Injected[/] [@click=app.quit]Quit App[/]",
+                assignee="Hacker Corp",
+                dates={"filed": "2024-01-01"},
+                abstract="Testing TUI markup injection.",
+                claims=[],
+                image_urls=[],
+                status="active",
+                family_id="F-INJECT-1"
+            )
+        ]
