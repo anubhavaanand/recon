@@ -67,7 +67,8 @@ def search(query: Optional[str] = typer.Argument(None, help="Patent search query
             console.print(f"[blue]ℹ {len(results)} results cached and added to collection. Use 'recon export --format json' to export.[/blue]")
             
     except Exception as e:
-        console.print(f"[red]ERR: Search failed. {str(e)}[/red]")
+        console.print(f"[red]ERR: Search operation terminated. Reason: {str(e)}[/red]")
+        console.print("[yellow]Action: Verify API connectivity and check 'recon config show' for valid keys.[/yellow]")
         raise typer.Exit(code=1)
 
 @app.command()

@@ -23,14 +23,17 @@ def _export_csv(records: List[PatentRecord], output_path: str):
         
     with open(output_path, mode='w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
-        writer.writerow(["ID", "Title", "Assignee", "Filed Date", "Status"])
+        writer.writerow(["ID", "Title", "Assignee", "Filed Date", "Status", "Score"])
+        from core.scoring import calculate_signal_score
         for record in records:
+            score = calculate_signal_score(record.cross_references)
             writer.writerow([
                 _safe_csv_field(record.id),
                 _safe_csv_field(record.title),
                 _safe_csv_field(record.assignee),
                 _safe_csv_field(record.dates.get("filed", "")),
-                _safe_csv_field(record.status)
+                _safe_csv_field(record.status),
+                _safe_csv_field(str(score))
             ])
 
 def _export_json(records: List[PatentRecord], output_path: str):
