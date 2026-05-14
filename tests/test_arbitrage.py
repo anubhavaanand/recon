@@ -9,7 +9,10 @@ def test_arbitrage_status_deterministic():
         abstract="Test abstract",
         assignee="Test Corp",
         dates={"filed": "2023-01-01"},
-        status="ACTIVE"
+        status="ACTIVE",
+        claims=["Claim 1"],
+        image_urls=["https://example.com/img.jpg"],
+        family_id="F123"
     )
     status1 = calculate_arbitrage_status(record)
     status2 = calculate_arbitrage_status(record)
@@ -19,8 +22,8 @@ def test_arbitrage_status_deterministic():
     assert status1["US"] == "ACTIVE"
 
 def test_arbitrage_status_variation():
-    record1 = PatentRecord(id="US1", title="T1", abstract="A1", assignee="X", dates={}, status="A")
-    record2 = PatentRecord(id="EP2", title="T2", abstract="A2", assignee="Y", dates={}, status="A")
+    record1 = PatentRecord(id="US1", title="T1", abstract="A1", assignee="X", dates={}, status="A", claims=[], image_urls=[], family_id="F1")
+    record2 = PatentRecord(id="EP2", title="T2", abstract="A2", assignee="Y", dates={}, status="A", claims=[], image_urls=[], family_id="F2")
     
     status1 = calculate_arbitrage_status(record1)
     status2 = calculate_arbitrage_status(record2)

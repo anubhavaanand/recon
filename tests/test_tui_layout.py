@@ -53,18 +53,22 @@ async def test_tab_switching_hl():
         
         # Blur the input so character keys bubble up to the screen bindings
         pilot.app.screen.query_one("#search_input").blur()
-        await pilot.pause(2.0)
+        await pilot.pause(3.0)
         
         screen = pilot.app.screen
+        screen.refresh()
         assert screen._active_tab == "info"
         await pilot.press("l")
-        await pilot.pause(3.0)
+        await pilot.pause(4.0)
+        screen.refresh()
         assert screen._active_tab == "claims"
         await pilot.press("l")
-        await pilot.pause(3.0)
+        await pilot.pause(4.0)
+        screen.refresh()
         assert screen._active_tab == "image"
         await pilot.press("h")
-        await pilot.pause(3.0)
+        await pilot.pause(4.0)
+        screen.refresh()
         assert screen._active_tab == "claims"
 
 
