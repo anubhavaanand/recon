@@ -596,9 +596,9 @@ def test_error_voice_consistency_audit():
     errors_from_codebase = [
         {
             "source": "cli/main.py",
-            "message": "[red]ERR: Search failed. {str(e)}[/red]",
-            "issues": ["Too generic - needs specific reason", "Missing resolution"],
-            "should_be": "ERR: Search failed: {specific_reason}. Action: {resolution_steps}."
+            "message": "[red]ERR: Search operation terminated. Reason: {str(e)}[/red]",
+            "voice_check": "✓ Dry, authoritative, includes reason and action",
+            "resolution": "Verify API connectivity and check config"
         },
         {
             "source": "cli/export.py",

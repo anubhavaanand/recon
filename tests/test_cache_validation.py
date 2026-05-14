@@ -94,8 +94,8 @@ def test_document_content_cached_indefinitely(cache, sample_record):
     # Retrieve immediately
     collection = cache.get_collection()
     assert len(collection) == 1
-    assert collection[0]["id"] == sample_record.id
-    assert collection[0]["title"] == sample_record.title
+    assert collection[0].id == sample_record.id
+    assert collection[0].title == sample_record.title
     
     # Simulate passage of time by manually backdating the timestamp
     # (This tests that no TTL query is applied to document content)
@@ -117,8 +117,8 @@ def test_document_content_cached_indefinitely(cache, sample_record):
     # Verify document is still retrievable (no TTL filtering on document content)
     collection = cache.get_collection()
     assert len(collection) == 1, "Document should be retrievable indefinitely"
-    assert collection[0]["id"] == sample_record.id
-    assert collection[0]["title"] == sample_record.title
+    assert collection[0].id == sample_record.id
+    assert collection[0].title == sample_record.title
     
     conn.close()
 
@@ -147,7 +147,7 @@ def test_metadata_refreshed_every_30_days(cache, sample_record):
     cached_results = cache.get_cached_search(query)
     assert cached_results is not None, "Fresh search results should be retrieved"
     assert len(cached_results) == 1
-    assert cached_results[0]["id"] == sample_record.id
+    assert cached_results[0].id == sample_record.id
     
     # Simulate passage of 15 days (within TTL window)
     conn = sqlite3.connect(cache.db_path)
