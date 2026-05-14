@@ -389,20 +389,12 @@ class GooglePatentsClient(BaseAsyncClient):
                 assignee="Global Mock Corp.",
                 dates={"filed": "2022-05-15"},
                 abstract=f"An advanced method for implementing {query} in distributed systems.",
-                claims=["1. A method for {query}."],
+                claims=[
+                    f"1. A method for {query}.",
+                    f"2. The method of claim 1, further comprising a verification step.",
+                ],
                 image_urls=[],
                 status="pending",
                 family_id="F-MOCK-2"
             ),
-            PatentRecord(
-                id="INJECT-1",
-                title="Malicious Patent [bold red]Injected[/] [@click=app.quit]Quit App[/]",
-                assignee="Hacker Corp",
-                dates={"filed": "2024-01-01"},
-                abstract="Testing TUI markup injection.",
-                claims=[],
-                image_urls=[],
-                status="active",
-                family_id="F-INJECT-1"
-            )
         ]
