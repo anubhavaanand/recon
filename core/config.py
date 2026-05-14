@@ -13,6 +13,7 @@ class Config:
     epo_consumer_secret: Optional[str] = None
     lens_api_key: Optional[str] = None
     terminal_detection_seen: bool = False
+    terminal_protocol: str = "external"
 
 def load_config() -> Config:
     """Load configuration from ~/.config/recon/config.toml"""
@@ -27,7 +28,8 @@ def load_config() -> Config:
                 epo_consumer_key=data.get("epo_consumer_key"),
                 epo_consumer_secret=data.get("epo_consumer_secret"),
                 lens_api_key=data.get("lens_api_key"),
-                terminal_detection_seen=data.get("terminal_detection_seen", False)
+                terminal_detection_seen=data.get("terminal_detection_seen", False),
+                terminal_protocol=data.get("terminal_protocol", "external")
             )
     except Exception:
         return Config()
@@ -46,6 +48,7 @@ def save_config(config: Config) -> None:
     if config.lens_api_key:
         lines.append(f'lens_api_key = "{config.lens_api_key}"')
     lines.append(f'terminal_detection_seen = {"true" if config.terminal_detection_seen else "false"}')
+    lines.append(f'terminal_protocol = "{config.terminal_protocol}"')
     
     with open(CONFIG_PATH, "w") as f:
         f.write("\n".join(lines))
