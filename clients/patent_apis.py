@@ -255,9 +255,119 @@ class EPOClient(BaseAsyncClient):
             return []
 
 class LensClient(BaseAsyncClient):
+    def __init__(self):
+        super().__init__(base_url="https://api.lens.org", timeout=30.0)
+        self.config = load_config()
+
+    async def validate_credentials(self) -> tuple[bool, str]:
+        if not self.config.lens_api_key:
+            return False, "ERR: Lens API key missing."
+        
+        headers = {"Authorization": f"Bearer {self.config.lens_api_key}"}
+        payload = {"query": {"match_all": {}}, "size": 1}
+        try:
+            client = await self.get_client()
+            response = await client.post(self.base_url + "/patent/search", json=payload, headers=headers)
+            if response.status_code == 200:
+                return True, "Lens Key is VALID."
+            elif response.status_code in [401, 403]:
+                return False, f"ERR: Lens authentication failed (Status {response.status_code})."
+            else:
+                return False, f"ERR: Lens returned status {response.status_code}."
+        except Exception as e:
+            return False, f"ERR: Lens validation error: {str(e)}"
+
     async def search(self, query: str) -> List[PatentRecord]:
-        return [PatentRecord(id="LENS123", title=f"Lens {query}", assignee="Mock Assignee", dates={"filed": "2020-01-04"}, abstract="Mock abstract", claims=[], image_urls=[], status="active", family_id="F123")]
+        if not self.config.lens_api_key:
+            print("ERR: Source [Lens] API key missing. Provide via 'recon config set --lens-key'.")
+            return []
+            
+        headers = {"Authorization": f"Bearer {self.config.lens_api_key}"}
+        payload = {
+            "query": {
+                "match_phrase": {
+                    "title": query
+                }
+            },
+            "size": 10
+        }
+        try:
+            client = await self.get_client()
+            response = await client.post(self.base_url + "/patent/search", json=payload, headers=headers)
+            if response.status_code != 200:
+                print(f"ERR: Source [Lens] failed with status {response.status_code}")
+                return []
+            
+            data = response.json()
+            results = data.get("data", [])
+            records = []
+            for doc in results:
+                biblio = doc.get("biblio", {})
+                title = biblio.get("title", "[?]")
+                assignee = "[?]"
+                if biblio.get("parties") and biblio["parties"].get("applicants"):
+                    assignee = biblio["parties"]["applicants"][0].get("extracted_name", {}).get("value", "[?]")
+                    
+                records.append(PatentRecord(
+                    id=doc.get("lens_id") or doc.get("pub_key") or "UNKNOWN",
+                    title=title,
+                    assignee=assignee,
+                    dates={"filed": biblio.get("filing_date", "[?]")},
+                    abstract=doc.get("abstract", "[?]"),
+                    claims=[],
+                    image_urls=[],
+                    status="active",
+                    family_id="UNKNOWN"
+                ))
+            return records
+        except Exception as e:
+            print(f"ERR: Source [Lens] failed: {e}")
+            return []
+
+    async def fetch_citations(self, patent_id: str) -> dict:
+        """Fetches forward and backward citations for a patent ID"""
+        if not self.config.lens_api_key:
+            # Fallback to empty if no key
+            return {"forward": [], "backward": []}
+            
+        headers = {"Authorization": f"Bearer {self.config.lens_api_key}"}
+        payload = {
+            "query": {
+                "bool": {
+                    "should": [
+                        {"match": {"lens_id": patent_id}},
+                        {"match": {"pub_key": patent_id}}
+                    ]
+                }
+            },
+            "include": ["biblio.citations_forward", "biblio.references"]
+        }
+        try:
+            client = await self.get_client()
+            response = await client.post(self.base_url + "/patent/search", json=payload, headers=headers)
+            if response.status_code != 200:
+                return {"forward": [], "backward": []}
+            
+            data = response.json()
+            docs = data.get("data", [])
+            if not docs:
+                return {"forward": [], "backward": []}
+                
+            doc = docs[0]
+            biblio = doc.get("biblio", {})
+            forward_raw = biblio.get("citations_forward", [])
+            backward_raw = biblio.get("references", [])
+            
+            forward = [{"id": c.get("pub_key", "[?]"), "title": c.get("title", "[?]")} for c in forward_raw if isinstance(c, dict)]
+            backward = [{"id": c.get("pub_key", "[?]"), "title": c.get("title", "[?]")} for c in backward_raw if isinstance(c, dict)]
+            
+            return {"forward": forward, "backward": backward}
+            
+        except Exception as e:
+            print(f"ERR: Fetching citations from Lens failed: {e}")
+            return {"forward": [], "backward": []}
 
 class GooglePatentsClient(BaseAsyncClient):
+    # Google Patents requires scraping or SerpApi, omitting for now to prevent IP blocks.
     async def search(self, query: str) -> List[PatentRecord]:
-        return [PatentRecord(id="GOOG123", title=f"Google {query}", assignee="Mock Assignee", dates={"filed": "2020-01-05"}, abstract="Mock abstract", claims=[], image_urls=[], status="active", family_id="F123")]
+        return []
