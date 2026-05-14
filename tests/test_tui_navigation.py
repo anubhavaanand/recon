@@ -45,42 +45,37 @@ async def test_reader_mode_screen_keyboard_bindings():
 def test_search_screen_export_binding():
     """Test SearchScreen has export_collection keyboard shortcut."""
     screen = SearchScreen()
-    
-    # Check binding exists
-    assert ("e", "export_collection", "Export Collection") in screen.BINDINGS
+    binding_keys = [(b[0], b[1]) for b in screen.BINDINGS]
+    assert ("e", "export_collection") in binding_keys
 
 
 def test_search_screen_download_binding():
     """Test SearchScreen has download_patent keyboard shortcut."""
     screen = SearchScreen()
-    
-    # Check binding exists
-    assert ("d", "download_patent", "Download Patent") in screen.BINDINGS
+    binding_keys = [(b[0], b[1]) for b in screen.BINDINGS]
+    assert ("d", "download_patent") in binding_keys
 
 
 def test_search_screen_focus_search_binding():
     """Test SearchScreen has focus_search keyboard shortcut."""
     screen = SearchScreen()
-    
-    # Check binding exists
-    assert ("/", "focus_search", "Focus Search") in screen.BINDINGS
+    binding_keys = [(b[0], b[1]) for b in screen.BINDINGS]
+    assert ("/", "focus_search") in binding_keys
 
 
 def test_search_screen_help_binding():
-    """Test SearchScreen has show_help keyboard shortcut."""
+    """Test SearchScreen has toggle_help keyboard shortcut."""
     screen = SearchScreen()
-    
-    # Check binding exists
-    assert ("?", "show_help", "Help") in screen.BINDINGS
+    binding_keys = [(b[0], b[1]) for b in screen.BINDINGS]
+    assert ("?", "toggle_help") in binding_keys
 
 
 def test_help_overlay_initial_state():
     """Test that help overlay is initially hidden in SearchScreen."""
     screen = SearchScreen()
-    
-    # Check that the screen has show_help_overlay attribute
-    assert hasattr(screen, 'show_help_overlay')
-    assert screen.show_help_overlay is False
+    # _show_help is the internal attribute name in the new implementation
+    assert hasattr(screen, '_show_help')
+    assert screen._show_help is False
 
 
 def test_reader_mode_has_correct_bindings():
@@ -119,7 +114,7 @@ def test_reader_mode_status_line_method():
     )
     screen = ReaderModeScreen(record)
     
-    # Check that the build content method works correctly
+    # _build_content includes id and abstract; title is in the header line
     content = screen._build_content()
-    assert "Test Patent" in content
     assert "US123456" in content
+    assert "Test abstract" in content

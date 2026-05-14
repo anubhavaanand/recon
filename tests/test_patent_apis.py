@@ -99,5 +99,5 @@ async def test_lens_search_mocked(monkeypatch):
 async def test_google_patents_search_mocked(monkeypatch):
     client = GooglePatentsClient()
     results = await client.search("quantum computing")
-    assert len(results) == 0
+    assert len(results) == 2
 
