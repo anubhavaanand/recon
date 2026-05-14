@@ -39,6 +39,26 @@ def detect_terminal_protocol() -> TerminalProtocol:
 
     return TerminalProtocol.FALLBACK
 
+from urllib.parse import urlparse
+
+def is_safe_url(url: str) -> bool:
+    """Validate that the URL is a trusted patent image source."""
+    if not url:
+        return False
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        return False
+    
+    allowed_domains = [
+        "lens.org", 
+        "uspto.gov", 
+        "epo.org", 
+        "wipo.int", 
+        "google.com", 
+        "googleapis.com"
+    ]
+    return any(domain in parsed.netloc for domain in allowed_domains)
+
 class ImageTab(Static):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -60,6 +80,11 @@ class ImageTab(Static):
         url = record.image_urls[0]
         
         if protocol == TerminalProtocol.FALLBACK:
+            if not is_safe_url(url):
+                self.update(f"ERR: Blocked unsafe or untrusted URL.\nURL: {url}")
+                self.is_loaded = True
+                return
+
             # Fallback to external viewer logic. We don't want modal dialogs, 
             # so we just print a dry actionable error/message
             self.update(f"ERR: Image rendering unsupported in current terminal.\nAction: Open externally or use Kitty/iTerm2.\nURL: {url}")

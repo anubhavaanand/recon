@@ -1,5 +1,6 @@
 from textual.widgets import ListView, ListItem, Label
 from textual.app import ComposeResult
+from rich.markup import escape
 from core.models import PatentRecord
 
 class ResultListItem(ListItem):
@@ -8,8 +9,10 @@ class ResultListItem(ListItem):
         self.record = record
 
     def compose(self) -> ComposeResult:
-        date = self.record.dates.get("filed", "[?]")
-        yield Label(f"[{date}] {self.record.id}: {self.record.title}")
+        date = escape(self.record.dates.get("filed", "[?]"))
+        title = escape(self.record.title)
+        rec_id = escape(self.record.id)
+        yield Label(f"[{date}] {rec_id}: {title}")
 
 class ResultList(ListView):
     pass

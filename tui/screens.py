@@ -1,16 +1,51 @@
 from textual.screen import Screen
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, Center, Middle
 from textual.widgets import Header, Footer, Input, ListView, TabbedContent, TabPane
 from textual.widgets import Static
 from tui.widgets.result_list import ResultList, ResultListItem
 from tui.widgets.info_tab import InfoTab
 from tui.widgets.claims_tab import ClaimsTab
-from tui.widgets.image_tab import ImageTab
+from tui.widgets.image_tab import ImageTab, detect_terminal_protocol, TerminalProtocol
 from core.search import search_all
 from storage.cache import CacheDatabase
 import logging
 logger = logging.getLogger(__name__)
+
+class TerminalDetectionScreen(Screen):
+    BINDINGS = [
+        ("enter", "continue", "Continue"),
+        ("q", "app.quit", "Quit")
+    ]
+
+    def compose(self) -> ComposeResult:
+        protocol = detect_terminal_protocol()
+        term = protocol.value
+        supported = "✅ Supported" if protocol in [TerminalProtocol.KITTY, TerminalProtocol.ITERM2, TerminalProtocol.SIXEL] else "❌ Not supported"
+
+        content = f"""
+┌─ RECON ─────────────────────────────────────────────┐
+│                                                       │
+│  Terminal Detection                                   │
+│                                                       │
+│  Your terminal: {term:<37} │
+│  Inline images: {supported:<37} │
+│                                                       │
+│  Options:                                             │
+│  [Enter] Continue to Search                           │
+│  [q]     Quit                                         │
+│                                                       │
+└───────────────────────────────────────────────────────┘
+"""
+        yield Static(content, id="terminal_detection_content")
+
+    def action_continue(self) -> None:
+        from core.config import load_config, save_config
+        config = load_config()
+        config.terminal_detection_seen = True
+        save_config(config)
+        self.app.switch_screen(SearchScreen())
+
 
 class CitationGraphScreen(Screen):
     BINDINGS = [
@@ -162,14 +197,8 @@ class SearchScreen(Screen):
         yield Input(placeholder="Search patents...", id="search_input")
         with Horizontal():
             yield ResultList(id="result_list")
-            with TabbedContent(id="tabs"):
-                with TabPane("Info", id="tab_info"):
-                    yield InfoTab(id="info_tab", classes="info-panel")
-                with TabPane("Claims", id="tab_claims"):
-                    yield ClaimsTab(id="claims_tab", classes="info-panel")
-                with TabPane("Image", id="tab_image"):
-                    yield ImageTab(id="image_tab", classes="info-panel")
-        yield Static(self._build_help_overlay(), id="help_overlay", classes="help-overlay hidden")
+            with Vertical(id="details_column"):
+                yield InfoTab(id="info_tab", classes="info-panel")
         yield Footer()
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -177,66 +206,33 @@ class SearchScreen(Screen):
         if not query:
             return
         
+        self.notify(f"Searching for: {query}")
         results = await search_all(query)
         result_list = self.query_one(ResultList)
-        await result_list.clear()
+        result_list.clear()
         
         for record in results:
-            await result_list.append(ResultListItem(record))
+            result_list.mount(ResultListItem(record))
             
         if results:
-            # Set index AND manually populate preview for first item
+            # Manually trigger first item preview
             result_list.index = 0
-            
             first_record = results[0]
+            
             info_tab = self.query_one(InfoTab)
-            claims_tab = self.query_one(ClaimsTab)
-            image_tab = self.query_one(ImageTab)
-            
-            # Load first item preview immediately
             info_tab.update_record(first_record)
-            claims_tab.reset()
-            image_tab.reset()
-            
-            # Load claims if Claims tab is active
-            tabs = self.query_one(TabbedContent)
-            if tabs.active and "claims" in str(tabs.active).lower():
-                await claims_tab.load_claims(first_record)
 
     async def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         try:
-            self.notify("📋 Item highlighted")
-            
             info_tab = self.query_one(InfoTab)
-            claims_tab = self.query_one(ClaimsTab)
-            image_tab = self.query_one(ImageTab)
-            
-            logger.debug(f"✓ Found tab widgets: InfoTab, ClaimsTab, ImageTab")
-            
-            # Reset all tabs on new selection
-            claims_tab.reset()
-            image_tab.reset()
-            
             if event.item and hasattr(event.item, "record"):
                 record = event.item.record
-                logger.debug(f"Loading record: {record.id}")
                 self.notify(f"Loading: {record.id}")
-                
                 info_tab.update_record(record)
-                logger.debug(f"✓ Called info_tab.update_record()")
-                
-                # Lazy load based on active tab
-                tabs = self.query_one(TabbedContent)
-                active_tab_id = tabs.active
-                logger.debug(f"Active tab ID: {active_tab_id} (type: {type(active_tab_id)})")
-                
-                await self._load_active_tab(active_tab_id, record)
             else:
                 info_tab.update_record(None)
-                logger.debug(f"No item or record in highlighted event")
         except Exception as e:
-            logger.error(f"Error in on_list_view_highlighted: {e}", exc_info=True)
-            self.notify(f"❌ Error: {str(e)}", severity="error")
+            self.notify(f"ERR: {str(e)}", severity="error")
 
     async def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
         try:

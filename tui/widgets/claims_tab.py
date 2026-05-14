@@ -1,4 +1,5 @@
 from textual.widgets import Static
+from rich.markup import escape
 from core.models import PatentRecord
 import asyncio
 
@@ -14,7 +15,9 @@ class ClaimsTab(Static):
         # Simulate network delay for fetching deep data
         await asyncio.sleep(0.1)
         
-        claims_text = "\n\n".join(record.claims) if record.claims else "No claims available."
+        # Escape each claim to prevent markup injection
+        escaped_claims = [escape(c) for c in record.claims] if record.claims else []
+        claims_text = "\n\n".join(escaped_claims) if escaped_claims else "No claims available."
         self.update(claims_text)
         self.is_loaded = True
         
