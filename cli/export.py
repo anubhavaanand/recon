@@ -5,6 +5,17 @@ from typing import List, Any
 from core.models import PatentRecord
 import fpdf
 
+def _safe_csv_field(value: str) -> str:
+    """Sanitize a CSV field to prevent formula injection in spreadsheet apps.
+    
+    Leading =, +, -, @ can trigger DDE/formula execution in Excel/Google Sheets.
+    Prefix them with a tab to neutralize.
+    """
+    value = str(value)
+    if value and value[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "\t" + value
+    return value
+
 def _export_csv(records: List[PatentRecord], output_path: str):
     if not records:
         Path(output_path).touch()
@@ -15,11 +26,11 @@ def _export_csv(records: List[PatentRecord], output_path: str):
         writer.writerow(["ID", "Title", "Assignee", "Filed Date", "Status"])
         for record in records:
             writer.writerow([
-                record.id,
-                record.title,
-                record.assignee,
-                record.dates.get("filed", ""),
-                record.status
+                _safe_csv_field(record.id),
+                _safe_csv_field(record.title),
+                _safe_csv_field(record.assignee),
+                _safe_csv_field(record.dates.get("filed", "")),
+                _safe_csv_field(record.status)
             ])
 
 def _export_json(records: List[PatentRecord], output_path: str):
