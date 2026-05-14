@@ -91,6 +91,7 @@ def config_set(
     uspto_key: Optional[str] = typer.Option(None, "--uspto-key", help="USPTO API Key"),
     epo_key: Optional[str] = typer.Option(None, "--epo-key", help="EPO Consumer Key"),
     epo_secret: Optional[str] = typer.Option(None, "--epo-secret", help="EPO Consumer Secret"),
+    lens_key: Optional[str] = typer.Option(None, "--lens-key", help="Lens API Key"),
 ):
     """Set API keys for patent sources."""
     config = load_config()
@@ -100,6 +101,8 @@ def config_set(
         config.epo_consumer_key = epo_key
     if epo_secret:
         config.epo_consumer_secret = epo_secret
+    if lens_key:
+        config.lens_api_key = lens_key
     
     save_config(config)
     typer.echo("Configuration updated successfully.")
@@ -114,17 +117,19 @@ def config_show():
     typer.echo(f"USPTO API Key: {mask(config.uspto_api_key)}")
     typer.echo(f"EPO Consumer Key: {mask(config.epo_consumer_key)}")
     typer.echo(f"EPO Consumer Secret: {mask(config.epo_consumer_secret)}")
+    typer.echo(f"Lens API Key: {mask(config.lens_api_key)}")
 
 @config_app.command("test")
 def config_test():
     """Test configured API keys."""
-    from clients.patent_apis import USPTOClient, EPOClient
+    from clients.patent_apis import USPTOClient, EPOClient, LensClient
     import asyncio
     
     async def run_tests():
         console.print("[cyan]Testing API Keys...[/cyan]")
         uspto = USPTOClient()
         epo = EPOClient()
+        lens = LensClient()
         
         uspto_ok, uspto_msg = await uspto.validate_credentials()
         if uspto_ok:
@@ -137,6 +142,12 @@ def config_test():
             console.print(f"[green]✓ {epo_msg}[/green]")
         else:
             console.print(f"[red]✗ {epo_msg}[/red]")
+            
+        lens_ok, lens_msg = await lens.validate_credentials()
+        if lens_ok:
+            console.print(f"[green]✓ {lens_msg}[/green]")
+        else:
+            console.print(f"[red]✗ {lens_msg}[/red]")
             
     asyncio.run(run_tests())
 

@@ -21,32 +21,56 @@ class CitationGraphScreen(Screen):
     def __init__(self, record, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.record = record
+        self.citations = {"forward": [], "backward": []}
+        self.loading = True
 
     def compose(self) -> ComposeResult:
         with Vertical():
-            yield Static(self._build_graph(), id="citation_graph", classes="reader-content")
+            yield Static("Loading citations...", id="citation_graph", classes="reader-content")
             yield Static("Citation Graph | q: quit | Esc: back", id="graph_status", classes="reader-status")
+
+    async def on_mount(self) -> None:
+        from clients.patent_apis import LensClient
+        if not self.record:
+            return
+            
+        client = LensClient()
+        self.citations = await client.fetch_citations(self.record.id)
+        self.loading = False
+        self.query_one("#citation_graph", Static).update(self._build_graph())
 
     def _build_graph(self) -> str:
         if not self.record:
             return "No patent selected."
         
-        # Simple ASCII visualization of citations (mock data if not present)
-        return f"""
-# Citation Graph: {self.record.id}
+        if self.loading:
+            return "Loading citations..."
+            
+        forward = self.citations.get("forward", [])
+        backward = self.citations.get("backward", [])
+        
+        lines = [f"# Citation Graph: {self.record.id}", "", f"Root: {self.record.id} ({self.record.assignee})", "│"]
+        
+        lines.append("├── Cited by (Forward Citations)")
+        if not forward:
+            lines.append("│   └── None found or Lens API key missing.")
+        else:
+            for i, c in enumerate(forward[:10]):
+                prefix = "│   └──" if i == len(forward[:10]) - 1 else "│   ├──"
+                title = c.get('title', '[?]')[:40] + "..." if len(c.get('title', '[?]')) > 40 else c.get('title', '[?]')
+                lines.append(f"{prefix} {c.get('id', '[?]')} - \"{title}\"")
+        
+        lines.append("│")
+        lines.append("└── Cites (Backward Citations)")
+        if not backward:
+            lines.append("    └── None found or Lens API key missing.")
+        else:
+            for i, c in enumerate(backward[:10]):
+                prefix = "    └──" if i == len(backward[:10]) - 1 else "    ├──"
+                title = c.get('title', '[?]')[:40] + "..." if len(c.get('title', '[?]')) > 40 else c.get('title', '[?]')
+                lines.append(f"{prefix} {c.get('id', '[?]')} - \"{title}\"")
 
-Root: {self.record.id} ({self.record.assignee})
-│
-├── Cited by (Forward Citations)
-│   ├── US2024-99999 [Ford Motor Co.] - "Advanced Solid-State Pack" (Score: 85)
-│   ├── EP2025-11111 [Toyota] - "Sulfide-based Electrolyte" (Score: 78)
-│   └── JP2023-55555 [Panasonic] - "Battery Module" (Score: 72)
-│
-└── Cites (Backward Citations)
-    ├── US2018-12345 [QuantumScape] - "Lithium-metal Anode"
-    ├── US2019-54321 [Solid Power] - "Sulfide glass ceramic"
-    └── OpenAlex W31234567 [MIT] - "Sulfide ionic conductivity" (Paper)
-"""
+        return "\n".join(lines)
 
 class ReaderModeScreen(Screen):
     BINDINGS = [
