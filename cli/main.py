@@ -71,6 +71,65 @@ def search(query: Optional[str] = typer.Argument(None, help="Patent search query
         console.print("[yellow]Action: Verify API connectivity and check 'recon config show' for valid keys.[/yellow]")
         raise typer.Exit(code=1)
 
+
+@app.command()
+def run(
+    query: Optional[str] = typer.Argument(None, help="Patent search query (optional - launches TUI if omitted)"),
+    export_format: Optional[str] = typer.Option(None, "--export", "-e", help="Export format after run: json,csv,markdown,pdf"),
+    show_table: bool = typer.Option(True, "--table/--no-table", help="Show a results table in the terminal"),
+):
+    """
+    Run an end-to-end recon flow: search, cache, add to collection and optionally export.
+
+    When `query` is omitted the interactive TUI is launched. When provided, the CLI runs the search
+    pipeline, caches results, and can export the collection automatically.
+    """
+    if query is None:
+        # Launch TUI
+        ui = ReconApp()
+        ui.run()
+        return
+
+    try:
+        console.print(f"[cyan]Running recon for: {query}[/cyan]")
+        results = asyncio.run(search_all(query))
+
+        if not results:
+            console.print("[yellow]No results found for run.[/yellow]")
+            raise typer.Exit(code=0)
+
+        # Cache and add to collection
+        db = CacheDatabase()
+        db.save_search_results(query, results)
+        for rec in results:
+            db.save_to_collection(rec)
+
+        console.print(f"[green]✓ Run complete: {len(results)} records cached and added to collection[/green]")
+
+        if show_table:
+            table = Table(title=f"Run Results ({len(results)} patents)")
+            table.add_column("ID", style="cyan", no_wrap=True)
+            table.add_column("Title", style="green")
+            table.add_column("Filed", style="magenta")
+            table.add_column("Assignee", style="yellow")
+            for record in results[:50]:
+                filed_date = record.dates.get("filed", "[?]") if getattr(record, "dates", None) else "[?]"
+                table.add_row(record.id or "[?]", (record.title or "[?]")[:55], filed_date, (record.assignee or "[?]")[:35])
+            console.print(table)
+
+        if export_format:
+            output_path = f"collection_export.{export_format}"
+            try:
+                export_records(db.get_collection(), export_format, output_path)
+                console.print(f"[green]✓ Exported collection to {output_path}[/green]")
+            except Exception as e:
+                console.print(f"[red]ERR: Export failed: {e}[/red]")
+                raise typer.Exit(code=1)
+
+    except Exception as e:
+        console.print(f"[red]ERR: Run failed. Reason: {str(e)}[/red]")
+        raise typer.Exit(code=1)
+
 @app.command()
 def export(format: str = typer.Option(..., "--format", "-f", help="Export format: csv, json, bibtex, markdown, pdf")):
     """Export the local patent collection."""
