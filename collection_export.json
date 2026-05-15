@@ -1,56 +1,78 @@
 [
   {
-    "id": "EP123",
-    "title": "EPO battery",
-    "assignee": "Mock Assignee",
+    "id": "EP-MOCK-QUA-2",
+    "title": "Advanced Quantum Computing Methods",
+    "assignee": "Global Mock Corp.",
     "dates": {
-      "filed": "2020-01-02"
+      "filed": "2022-05-15"
     },
-    "abstract": "Mock abstract",
+    "abstract": "An advanced method for implementing quantum computing in distributed systems.",
     "claims": [
-      "[?]"
+      "1. A method for quantum computing.",
+      "2. The method of claim 1, further comprising a verification step."
     ],
     "image_urls": [
       "[?]"
     ],
-    "status": "active",
-    "family_id": "F123",
+    "status": "pending",
+    "family_id": "F-MOCK-2",
     "cross_references": []
   },
   {
-    "id": "GOOG123",
-    "title": "Google battery",
-    "assignee": "Mock Assignee",
+    "id": "US-MOCK-QUA-1",
+    "title": "Mock System for Quantum Computing",
+    "assignee": "Mock Assignee Inc.",
     "dates": {
-      "filed": "2020-01-05"
+      "filed": "2023-10-01"
     },
-    "abstract": "Mock abstract",
+    "abstract": "A novel approach to quantum computing utilizing mock algorithms.",
     "claims": [
-      "[?]"
+      "1. A system comprising a mock processor.",
+      "2. The system of claim 1, further comprising mock memory."
     ],
     "image_urls": [
       "[?]"
     ],
     "status": "active",
-    "family_id": "F123",
+    "family_id": "F-MOCK-1",
     "cross_references": []
   },
   {
-    "id": "LENS123",
-    "title": "Lens battery",
-    "assignee": "Mock Assignee",
+    "id": "US-MOCK-BAT-1",
+    "title": "Mock System for Battery",
+    "assignee": "Mock Assignee Inc.",
     "dates": {
-      "filed": "2020-01-04"
+      "filed": "2023-10-01"
     },
-    "abstract": "Mock abstract",
+    "abstract": "A novel approach to battery utilizing mock algorithms.",
     "claims": [
-      "[?]"
+      "1. A system comprising a mock processor.",
+      "2. The system of claim 1, further comprising mock memory."
     ],
     "image_urls": [
       "[?]"
     ],
     "status": "active",
-    "family_id": "F123",
+    "family_id": "F-MOCK-1",
+    "cross_references": []
+  },
+  {
+    "id": "EP-MOCK-BAT-2",
+    "title": "Advanced Battery Methods",
+    "assignee": "Global Mock Corp.",
+    "dates": {
+      "filed": "2022-05-15"
+    },
+    "abstract": "An advanced method for implementing battery in distributed systems.",
+    "claims": [
+      "1. A method for battery.",
+      "2. The method of claim 1, further comprising a verification step."
+    ],
+    "image_urls": [
+      "[?]"
+    ],
+    "status": "pending",
+    "family_id": "F-MOCK-2",
     "cross_references": []
   }
 ]

@@ -1,14 +1,14 @@
 {
-  "search_latency_first_result": 0.03384100091352593,
-  "search_latency_with_filtering": 0.290928001049906,
-  "navigation_preview_update_latency": 0.002406500243523624,
-  "navigation_large_content": 0.0027149990273755975,
-  "tab_switch_latency": 0.0009334999049315229,
-  "tab_switch_with_images": 0.004720500328403432,
-  "memory_under_load": 0.216796875,
+  "search_latency_first_result": 0.025600000299164094,
+  "search_latency_with_filtering": 0.12757799959217664,
+  "navigation_preview_update_latency": 0.0014255001588026062,
+  "navigation_large_content": 0.0014884999472997151,
+  "tab_switch_latency": 0.00042149986256845295,
+  "tab_switch_with_images": 0.0013465005395119078,
+  "memory_under_load": 0.1328125,
   "memory_leak_detection": 0.0,
   "cpu_during_search": 0.0,
-  "cache_hit_performance": 0.0003694995029945858,
-  "cache_miss_performance": 0.0013509998098015785,
-  "full_search_navigation": 0.06703999861201737
+  "cache_hit_performance": 0.0005365000106394291,
+  "cache_miss_performance": 0.0045265005610417575,
+  "full_search_navigation": 0.061953000113135204
 }
