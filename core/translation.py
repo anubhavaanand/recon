@@ -31,7 +31,7 @@ async def translate_text(text: str, target_language: str = "English") -> str:
     }
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, trust_env=False) as client:
             response = await client.post(ollama_url, json=payload)
             
             if response.status_code == 200:

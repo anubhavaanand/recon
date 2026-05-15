@@ -18,14 +18,14 @@ class ClaimsTab(Static):
         self.current_record = record
         self._all_claims = record.claims or []
         self.is_loaded = True
-        self._render()
+        self._render_claims()
 
     def toggle_independent(self) -> None:
         """Toggle independent-claims-only view (PRD key `i`)."""
         self._independent_only = not self._independent_only
-        self._render()
+        self._render_claims()
 
-    def _render(self) -> None:
+    def _render_claims(self) -> None:
         if not self._all_claims:
             self.update("No claims available.")
             return

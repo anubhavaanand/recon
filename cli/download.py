@@ -20,7 +20,7 @@ async def download_patent_assets(record: PatentRecord, base_path: str = "downloa
         
     # 2. Download figures
     if record.image_urls:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, trust_env=False) as client:
             for i, url in enumerate(record.image_urls, 1):
                 try:
                     response = await client.get(url)
