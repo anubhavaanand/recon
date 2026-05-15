@@ -12,7 +12,7 @@ class BaseAsyncClient:
     @classmethod
     async def get_client(cls) -> httpx.AsyncClient:
         if cls._shared_client is None or cls._shared_client.is_closed:
-            cls._shared_client = httpx.AsyncClient(timeout=30.0)
+            cls._shared_client = httpx.AsyncClient(timeout=30.0, trust_env=False)
         return cls._shared_client
 
     async def get_with_backoff(

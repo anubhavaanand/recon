@@ -13,7 +13,7 @@ class SynthesisEngine:
     async def _query_ollama(self, prompt: str) -> str:
         """Query the local Ollama instance."""
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=30.0, trust_env=False) as client:
                 response = await client.post(
                     f"{self.base_url}/generate",
                     json={

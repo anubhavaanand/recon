@@ -22,7 +22,7 @@ import os
 import time
 import psutil
 import statistics
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, asdict
@@ -167,7 +167,7 @@ class BenchmarkRecorder:
             std_dev=std_dev,
             min=min(sorted_samples),
             max=max(sorted_samples),
-            timestamp=datetime.utcnow().isoformat() + "Z",
+            timestamp=datetime.now(timezone.utc).isoformat(),
             threshold=threshold,
             exceeded=threshold is not None and p50 > threshold,
         )
@@ -179,10 +179,13 @@ class BenchmarkRecorder:
         
         if previous_baseline is not None:
             # Flag as regression if p50 exceeds 1.2x (20%) of baseline
-            if p50 > previous_baseline * 1.2:
+            if previous_baseline > 0 and p50 > previous_baseline * 1.2:
                 regression_detected = True
                 increase_pct = ((p50 - previous_baseline) / previous_baseline) * 100
                 regression_notes = f"Regression: {increase_pct:.1f}% increase from baseline {previous_baseline:.2f}{unit}"
+            elif previous_baseline == 0 and p50 > 0:
+                regression_detected = True
+                regression_notes = f"Regression: baseline was 0.00{unit}; current median {p50:.2f}{unit}"
         
         # Create result
         result = BenchmarkResult(
@@ -207,7 +210,7 @@ class BenchmarkRecorder:
     def generate_json_report(self) -> str:
         """Generate JSON report with all results."""
         report = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "summary": {
                 "total_benchmarks": len(self.results),
                 "thresholds_met": sum(1 for r in self.results if r.threshold_met),

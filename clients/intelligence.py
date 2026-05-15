@@ -28,7 +28,7 @@ class IntelligenceClient:
         }
         
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
                 response = await client.post(url, json=payload)
                 if response.status_code == 200:
                     results = response.json().get("results", [])
@@ -52,7 +52,7 @@ class IntelligenceClient:
         query = urllib.parse.quote(entity_name)
         url = f"https://api.openalex.org/institutions?search={query}"
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
                 response = await client.get(url)
                 if response.status_code == 200:
                     results = response.json().get("results", [])
