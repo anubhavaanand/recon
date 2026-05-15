@@ -5,8 +5,8 @@ import pytest
 from cli import main as cli_main
 
 
-def fake_search_all(query):
-    # Return a small list of simple record-like objects
+async def fake_search_all(query):
+    # Return a small list of simple record-like objects (async to match real API)
     return [
         SimpleNamespace(id="US1", title="Quantum widget", dates={"filed": "2020-01-01"}, assignee="Acme"),
         SimpleNamespace(id="US2", title="Flux capacitor", dates={"filed": "2021-06-01"}, assignee="Wayne"),
@@ -35,8 +35,9 @@ def test_run_command_monkeypatched(monkeypatch):
     monkeypatch.setattr(cli_main, "search_all", fake_search_all)
     monkeypatch.setattr(cli_main, "CacheDatabase", lambda: DummyDB())
 
-    result = runner.invoke(cli_main.app, ["run", "quantum"], catch_exceptions=False)
+    result = runner.invoke(cli_main.app, ["run", "quantum"], catch_exceptions=True)
 
+    # Ensure the command completed and printed expected content
     assert result.exit_code == 0
     assert "Running recon for: quantum" in result.output
     assert "Run Results (2 patents)" in result.output
