@@ -17,9 +17,8 @@ CREATE TABLE IF NOT EXISTS status_metadata (
 );
 
 CREATE TABLE IF NOT EXISTS citations (
-    id TEXT,
-    citation_id TEXT,
-    PRIMARY KEY (id, citation_id)
+    patent_id TEXT,
+    cited_patent_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS family_links (
@@ -30,14 +29,15 @@ CREATE TABLE IF NOT EXISTS family_links (
 );
 
 CREATE TABLE IF NOT EXISTS collections (
-    id TEXT PRIMARY KEY,
+    patent_id TEXT PRIMARY KEY,
     data TEXT,
-    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS search_results (
     query TEXT PRIMARY KEY,
     results TEXT,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 """
@@ -63,7 +63,7 @@ class CacheDatabase:
         with self.get_connection() as conn:
             data = json.dumps(dataclasses.asdict(record))
             conn.execute(
-                "INSERT OR REPLACE INTO collections (id, data) VALUES (?, ?)",
+                "INSERT OR REPLACE INTO collections (patent_id, data) VALUES (?, ?)",
                 (record.id, data)
             )
             conn.commit()
@@ -71,7 +71,7 @@ class CacheDatabase:
     def get_collection(self) -> list[PatentRecord]:
         """Retrieve all patent records in the local collection."""
         with self.get_connection() as conn:
-            rows = conn.execute("SELECT data FROM collections ORDER BY added_at DESC").fetchall()
+            rows = conn.execute("SELECT data FROM collections ORDER BY timestamp DESC").fetchall()
         
         records = []
         for row in rows:
@@ -86,7 +86,7 @@ class CacheDatabase:
         """Retrieve cached search results if they are less than 30 days old."""
         with self.get_connection() as conn:
             row = conn.execute(
-                "SELECT results FROM search_results WHERE query = ? AND updated_at > datetime('now', '-30 days')",
+                "SELECT results FROM search_results WHERE query = ? AND timestamp > datetime('now', '-30 days')",
                 (query,)
             ).fetchone()
             
@@ -106,7 +106,7 @@ class CacheDatabase:
         with self.get_connection() as conn:
             data = json.dumps([dataclasses.asdict(r) for r in records])
             conn.execute(
-                "INSERT OR REPLACE INTO search_results (query, results, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                "INSERT OR REPLACE INTO search_results (query, results, timestamp, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                 (query, data)
             )
             conn.commit()

@@ -8,4 +8,7 @@ build/
 .env
 .DS_Store
 .gemini
-.specify
+recon_cache.db
+scratch/
+tests/.benchmarks/
+recon_debug.svg
