@@ -45,7 +45,7 @@ def test_search_cache_expiration(tmp_path, monkeypatch):
     
     # Manually backdate the updated_at
     with cache.get_connection() as conn:
-        conn.execute("UPDATE search_results SET updated_at = datetime('now', '-31 days') WHERE query = ?", (query,))
+        conn.execute("UPDATE search_results SET timestamp = datetime('now', '-31 days'), updated_at = datetime('now', '-31 days') WHERE query = ?", (query,))
         conn.commit()
         
     # Should be expired

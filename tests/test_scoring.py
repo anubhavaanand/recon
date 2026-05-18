@@ -16,20 +16,21 @@ def test_equal_weight_scoring():
     # 0 signals -> 0
     assert calculate_signal_score([]) == 0
     
-    # 1 signal -> 20
+    # 1 grant signal -> 20
     refs = [CrossReference(source="NIH", url="")]
     assert calculate_signal_score(refs) == 20
     
-    # 5 signals -> 100
+    # All 5 distinct signal types -> 100
+    # grant(NIH) + corp(SEC) + academic(OpenAlex) + temporal(NIH+OA) + supply(opencorporates) = 5
     refs = [
-        CrossReference(source="NIH", url=""),
-        CrossReference(source="NSF", url=""),
-        CrossReference(source="SEC", url=""),
-        CrossReference(source="OpenAlex", url=""),
-        CrossReference(source="arXiv", url="")
+        CrossReference(source="NIH", url=""),          # grant
+        CrossReference(source="SEC", url=""),          # corp
+        CrossReference(source="OpenAlex", url=""),     # academic (also triggers temporal with NIH)
+        CrossReference(source="opencorporates", url=""),  # supply chain
     ]
-    assert calculate_signal_score(refs) == 100
+    score = calculate_signal_score(refs)
+    assert score == 100  # 5 signals x 20 = 100
     
-    # 6 signals -> still 100 (max)
-    refs.append(CrossReference(source="OpenCorporates", url=""))
+    # Extra refs beyond 5 types -> still capped at 100
+    refs.append(CrossReference(source="arXiv", url=""))
     assert calculate_signal_score(refs) == 100

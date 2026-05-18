@@ -34,6 +34,13 @@ Users save patents to collections and export to PDF, Markdown, JSON, BibTeX, CSV
 **Acceptance**:
 1. Export to CSV → cleanly formatted file saved
 2. Reader mode → UI chrome hidden, focus on abstract and claims
+### User Story 5 - Intelligence Synthesis & Local AI (P5)
+Users trigger a synthesis mode to summarize current search results or translate technical content using local LLMs (Ollama). All AI output is explicitly sandboxed and requires user demand.
+
+**Acceptance**:
+1. 'm' key → triggers synthesis summary of visible results
+2. 't' key → translates abstract/claims into target language
+3. Ollama offline → actionable error explaining how to start the service
 
 ## Functional Requirements
 
@@ -47,6 +54,8 @@ Users save patents to collections and export to PDF, Markdown, JSON, BibTeX, CSV
 - **FR-008**: Dry, actionable error voice.
 - **FR-009**: Terminal image rendering (Kitty/iTerm2/Sixel) with external viewer fallback.
 - **FR-010**: Save collections. Export to PDF, Markdown, JSON, BibTeX, CSV.
+- **FR-011**: Intelligence Synthesis using local LLM (Ollama).
+- **FR-012**: Jurisdiction Arbitrage status visualization for patent families.
 
 ## Key Entities
 
