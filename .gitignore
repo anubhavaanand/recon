@@ -18,3 +18,8 @@ test_tab_debug.py
 verify_tab_fix.py
 test_pdf.py
 *.pdf
+.gemini/
+GEMINI.md
+PHASE_C_EXECUTION_PLAN.md
+RECON_PRD_v1.0.0.md
+tasks.md
