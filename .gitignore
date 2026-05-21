@@ -12,3 +12,5 @@ recon_cache.db
 scratch/
 tests/.benchmarks/
 recon_debug.svg
+recon_cache.db
+collection_export.json
