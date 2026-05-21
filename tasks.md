@@ -98,7 +98,7 @@ description: "Task list for RECON Patent Research Tool implementation"
 ### Implementation for User Story 4
 - [x] T028 [US4] Add local Collection saving hotkey (`s`) bound to SQLite update in `tui/screens.py`.
 - [x] T029 [P] [US4] Implement formatters in `cli/export.py` (utilizing standard libs + basic formatting).
-- [ ] T030 [US4] Add `typer` subcommands in `cli/main.py` for exporting collections (e.g., `recon export --format csv`).
+- [x] T030 [US4] Add `typer` subcommands in `cli/main.py` for exporting collections (e.g., `recon export --format csv`).
 - [x] T031 [US4] Create `ReaderModeScreen` in `tui/screens.py` that hides left list pane for full-screen reading.
 
 **Checkpoint**: Patents can be saved, exported from the CLI, and viewed cleanly in reader mode.

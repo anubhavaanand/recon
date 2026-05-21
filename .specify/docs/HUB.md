@@ -13,7 +13,7 @@
 #### 1. Constitution (`.specify/docs/constitution.md`)
 - **Type**: Governance document
 - **Audience**: Everyone (product, dev, QA)
-- **Length**: 38 lines
+- **Length**: 38 lines (as documented in the file)
 - **Content**:
   - 8 Core Principles (Zero-AI, Transparency, Equal Weights, etc.)
   - Stack lock
@@ -28,7 +28,7 @@
 #### 2. Specification (`.specify/docs/spec.md`)
 - **Type**: Feature specification
 - **Audience**: Product, dev, QA
-- **Length**: 92 lines
+- **Length**: 101 lines
 - **Content**:
   - 4 User Stories (P1-P4 priorities)
   - 10 Functional Requirements (FR-001 to FR-010)
@@ -82,7 +82,7 @@
 #### 4. Evaluation Tasks (`.specify/tasks/EVALUATION_TASKS.md`)
 - **Type**: Task breakdown & implementation plan
 - **Audience**: Development team (leads, individual contributors)
-- **Length**: 447 lines
+- **Length**: 449 lines
 - **Content**:
   - 8 Task Groups (1.1-1.2, 2.1-2.2, 3.1-3.3, 4.1, 5.1, 6.1-6.2, 7.1-7.2, 8.1-8.2)
   - 15 Specific Tasks total
@@ -114,7 +114,7 @@
 #### 5. Documentation README (`.specify/docs/README.md`)
 - **Type**: Navigation guide
 - **Audience**: Everyone (especially first-time users)
-- **Length**: 164 lines
+- **Length**: 170 lines
 - **Content**:
   - Document structure overview
   - Quick navigation by role
@@ -125,6 +125,16 @@
   - Related files in repo
   - Success metrics checklist
 - **How to Use**: When you're new to the project or unsure where to start
+
+#### 6. Product Requirements (`../RECON_PRD_v1.0.0.md`)
+- **Type**: Canonical product requirements document
+- **Audience**: Product, dev, QA
+- **Length**: External root document
+- **Content**:
+  - Full UI/UX mockups
+  - Feature rules and keyboard map
+  - Data source matrix and roadmap
+- **How to Use**: Treat as the source of truth for product behavior and UI direction
 
 ---
 
@@ -194,8 +204,9 @@ Documentation README (Navigation)
 | `constitution.md` | 38 | 3 | N/A | ✅ Reference |
 | `spec.md` | 92 | 8 | N/A | ✅ Reference |
 | `evaluation-framework.md` | 315 | 9 | N/A | ✅ Reference |
-| `EVALUATION_TASKS.md` | 447 | 8 | 15 | ✅ Ready to Execute |
-| `README.md` | 164 | 10 | N/A | ✅ Navigation |
+| `EVALUATION_TASKS.md` | 449 | 8 | 15 | ✅ Ready to Execute |
+| `README.md` | 170 | 10 | N/A | ✅ Navigation |
+| `../RECON_PRD_v1.0.0.md` | External | 13 | N/A | ✅ Canonical PRD |
 | **TOTAL** | **1,056** | **~30** | **15** | **✅ COMPLETE** |
 
 ---

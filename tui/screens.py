@@ -585,9 +585,11 @@ class SearchScreen(Screen):
 
     def _current_record(self):
         result_list = self.query_one(ResultList)
-        item = result_list.highlighted_child
-        if item and hasattr(item, "record"):
-            return item.record
+        idx = result_list.index
+        if idx is not None and 0 <= idx < len(result_list.children):
+            item = result_list.children[idx]
+            if hasattr(item, "record"):
+                return item.record
         return None
 
     # ── Tab switching (PRD: h/l, ←/→) ─────────────────
