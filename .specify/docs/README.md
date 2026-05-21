@@ -5,6 +5,7 @@ This directory contains comprehensive specification, planning, and evaluation do
 ## Document Structure
 
 ### Core Specifications
+- **`../RECON_PRD_v1.0.0.md`** - Canonical product requirements document for UI, UX, behavior, and roadmap
 - **`spec.md`** - Feature specification with user stories, requirements, success criteria
 - **`constitution.md`** - Core principles governing all design decisions
 
@@ -20,19 +21,15 @@ This directory contains comprehensive specification, planning, and evaluation do
 ## Quick Navigation
 
 ### For Product/Feature Development
-1. Read `spec.md` - Understand requirements and user stories
-2. Read `constitution.md` - Align design decisions with core principles
-3. Reference `evaluation-framework.md` Section 8-9 for Constitutional compliance testing
-1. Read `prd.md` - **This is the primary source of truth for UI, UX, and features.**
-2. Read `spec.md` - Understand high-level user stories and functional requirements.
-3. Read `constitution.md` - Align design decisions with core principles.
-4. Reference `evaluation-framework.md` Section 8-9 for Constitutional compliance testing.
+1. Read `../RECON_PRD_v1.0.0.md` - Canonical product requirements, UI, UX, and roadmap
+2. Read `spec.md` - Understand requirements and user stories
+3. Read `constitution.md` - Align design decisions with core principles
+4. Reference `evaluation-framework.md` Section 8-9 for Constitutional compliance testing
 
 ### For Quality Assurance & Testing
 1. Start with `evaluation-framework.md` - Overview of entire testing strategy
 2. Review test scopes in Sections 1-7 for your specific module
 3. Check `../tasks/EVALUATION_TASKS.md` for task breakdown and sequencing
-3. Check `../tasks/EVALUATION_TASKS.md` for task breakdown and sequencing.
 
 ### For Team Onboarding
 1. **Product Context**: Read `spec.md` (5 min) + `constitution.md` (3 min)
@@ -146,6 +143,7 @@ When evaluation framework is fully implemented, you should see:
 
 ## Related Files in Repository
 
+- `../RECON_PRD_v1.0.0.md` - Canonical PRD and feature source of truth
 - `.specify/workflows/` - CI/CD automation
 - `.specify/scripts/bash/` - Helper scripts
 - `tests/` - Test implementations
