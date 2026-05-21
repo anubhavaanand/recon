@@ -19,7 +19,8 @@ dependencies = [
 [project.optional-dependencies]
 test = [
     "pytest",
-    "pytest-asyncio"
+    "pytest-asyncio",
+    "psutil"
 ]
 
 [tool.setuptools.packages.find]
