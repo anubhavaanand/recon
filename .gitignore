@@ -12,6 +12,9 @@ recon_cache.db
 scratch/
 tests/.benchmarks/
 recon_debug.svg
-recon_cache.db
 collection_export.json
-tests/.benchmarks/
+debug_test.py
+test_tab_debug.py
+verify_tab_fix.py
+test_pdf.py
+*.pdf
