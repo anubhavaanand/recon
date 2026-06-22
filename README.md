@@ -158,7 +158,7 @@ Keys are stored in `~/.config/recon/config.json` (chmod 600):
 |----------|--------|----------|
 | `PATSNAP_API_KEY` | PatSnap | No (scraper fallback exists for most features) |
 | `USPTO_API_KEY` | USPTO | No |
-| `EPO_CONSUMER_KEY` / `EPO_CONSUMER_SECRET` | EPO | No (scraper-only) |
+| `EPO_CONSUMER_KEY` / `EPO_CONSUMER_SECRET` | EPO | No (scraper fallback exists) |
 | `LENS_API_KEY` | Lens.org | No (scraper-only) |
 
 Set via `recon config set` (interactive) or `.env` file.
