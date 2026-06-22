@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="anubhavanand/recon"
+REPO="anubhavaanand/recon"
 BRANCH="main"
 INSTALL_DIR="${HOME}/.local/share/recon"
 
