@@ -233,6 +233,7 @@ class ReaderModeScreen(Screen):
     def __init__(self, record, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.record = record
+        self._original_abstract: str | None = None
 
     def compose(self) -> ComposeResult:
         # PRD §3.3: No Header, No Footer — full width content + minimal status line
@@ -273,18 +274,31 @@ class ReaderModeScreen(Screen):
         self.query_one("#reader_content", Static).scroll_up(animate=False)
 
     async def action_translate(self) -> None:
-        try:
-            from core.translation import translate_text
-        except ImportError:
-            self.app.notify("ERR: Translation requires Ollama + DeepSeek. Not available.")
+        if not self.record:
             return
+        from core.translation import translate_text
+
+        if self._original_abstract is not None:
+            # Revert to original
+            self.record.abstract = self._original_abstract
+            self._original_abstract = None
+            self.query_one("#reader_content", Static).update(self._build_content())
+            self.app.notify("Reverted to original.")
+            return
+
         self.app.notify("Translating...")
-        if self.record.abstract and "[t]ranslated" not in self.record.abstract:
-            self.record.abstract = (
-                await translate_text(self.record.abstract)
-                + "\n\n[t]ranslated from original by DeepSeek"
-            )
-        self.query_one("#reader_content", Static).update(self._build_content())
+        self._original_abstract = self.record.abstract
+        translated = await translate_text(self.record.abstract)
+        if translated != self._original_abstract and not translated.startswith("ERR:"):
+            self.record.abstract = translated
+            self.query_one("#reader_content", Static).update(self._build_content())
+            self.app.notify("Translation complete.")
+        else:
+            self._original_abstract = None
+            if translated.startswith("ERR:"):
+                self.app.notify(translated, severity="error")
+            else:
+                self.app.notify("Text already in English — no translation needed.")
         self.app.notify("Translation complete.")
 
 
@@ -307,10 +321,12 @@ class DetailScreen(Screen):
     ]
 
     _show_citations: reactive[bool] = reactive(False)
+    _show_translation: reactive[bool] = reactive(False)
 
     def __init__(self, record, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.record = record
+        self._original_abstract: str | None = None
 
     def compose(self) -> ComposeResult:
         with Vertical():
@@ -324,10 +340,11 @@ class DetailScreen(Screen):
 
     def _status_line(self) -> str:
         citation_hint = "hide cit." if self._show_citations else "citations"
+        translate_hint = "orig." if self._show_translation else "translate"
         return (
             f"Esc: back  [s]ave  [d]ownload  [e]xport  [o]pen  "
-            f"[r]eader  [c]{citation_hint}  [f]amily  [t]ranslate  "
-            f"[j/k] scroll"
+            f"[r]eader  [c]{citation_hint}  [t]{translate_hint}  "
+            f"[f]amily  [j/k] scroll"
         )
 
     def watch__show_citations(self, showing: bool) -> None:
@@ -434,15 +451,44 @@ class DetailScreen(Screen):
         target = self.query_one("#citation_tree", CitationTree) if self._show_citations else self.query_one("#detail_content", Static)
         target.scroll_up(animate=False)
 
+    def watch__show_translation(self, showing: bool) -> None:
+        """Reactively toggle between translated and original abstract."""
+        if not self.record:
+            return
+        if showing:
+            # Save original and translate
+            self.app.notify("Translating...")
+            self.call_after_refresh(self._do_translate)
+        else:
+            # Restore original
+            if self._original_abstract is not None:
+                self.record.abstract = self._original_abstract
+                self._original_abstract = None
+                self.query_one("#detail_content", Static).update(self._build_content())
+            self.query_one("#detail_status", Static).update(self._status_line())
+
+    async def _do_translate(self) -> None:
+        if not self.record:
+            return
+        self._original_abstract = self.record.abstract
+        translated = await translate_text(self.record.abstract)
+        if translated != self._original_abstract and not translated.startswith("ERR:"):
+            self.record.abstract = translated
+            self.query_one("#detail_content", Static).update(self._build_content())
+            self.app.notify("Translation complete.")
+        else:
+            self._show_translation = False
+            if translated.startswith("ERR:"):
+                self.app.notify(translated, severity="error")
+            else:
+                self.app.notify("Text already in English — no translation needed.")
+        self.query_one("#detail_status", Static).update(self._status_line())
+
     async def action_translate(self) -> None:
-        from core.translation import translate_text
         if not self.record:
             self.app.notify("No patent selected.")
             return
-        
-        self.app.notify("Translating abstract...")
-        self.record.abstract = await translate_text(self.record.abstract)
-        self.query_one("#detail_content", Static).update(self._build_content())
+        self._show_translation = not self._show_translation
         self.app.notify("Translation complete.")
 
 
@@ -906,10 +952,27 @@ class SearchScreen(Screen):
         if not record:
             self.app.notify("No patent selected.")
             return
-            
-        self.app.notify("Translating abstract for preview...")
-        record.abstract = await translate_text(record.abstract)
-        # Update active tab
-        if self._active_tab == "info":
-            self.query_one(InfoTab).update_record(record)
-        self.app.notify("Translation complete.")
+
+        # Toggle: store original on first call, restore on second
+        if getattr(record, "_original_abstract", None) is not None:
+            record.abstract = record._original_abstract
+            record._original_abstract = None
+            if self._active_tab == "info":
+                self.query_one(InfoTab).update_record(record)
+            self.app.notify("Reverted to original.")
+            return
+
+        self.app.notify("Translating...")
+        record._original_abstract = record.abstract
+        translated = await translate_text(record.abstract)
+        if translated != record._original_abstract and not translated.startswith("ERR:"):
+            record.abstract = translated
+            if self._active_tab == "info":
+                self.query_one(InfoTab).update_record(record)
+            self.app.notify("Translation complete.")
+        else:
+            record._original_abstract = None
+            if translated.startswith("ERR:"):
+                self.app.notify(translated, severity="error")
+            else:
+                self.app.notify("Text already in English.")

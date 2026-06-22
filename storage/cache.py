@@ -40,6 +40,13 @@ CREATE TABLE IF NOT EXISTS search_results (
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS translation_cache (
+    source_hash TEXT PRIMARY KEY,
+    source_text TEXT,
+    translated_text TEXT,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 class CacheDatabase:
