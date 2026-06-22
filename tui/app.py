@@ -125,6 +125,49 @@ class ReconApp(App):
         display: none;
     }
 
+    /* ── Export format overlay ── */
+    #export_overlay {
+        width: 44;
+        height: auto;
+        background: #161b22;
+        color: #c9d1d9;
+        border: solid #30363d;
+        offset: 38 5;
+        padding: 0 1;
+        layer: overlay;
+    }
+    #export_overlay.hidden {
+        display: none;
+    }
+
+    /* ── Source filter overlay ── */
+    #source_filter_overlay {
+        width: 48;
+        height: auto;
+        background: #161b22;
+        color: #c9d1d9;
+        border: solid #30363d;
+        offset: 34 2;
+        padding: 0 1;
+        layer: overlay;
+    }
+    #source_filter_overlay.hidden {
+        display: none;
+    }
+
+    /* ── Citation tree (inline, toggled via hidden class) ── */
+    #citation_tree {
+        width: 100%;
+        height: 1fr;
+        padding: 1 2;
+        overflow-y: auto;
+        color: #c9d1d9;
+        background: #0d1117;
+    }
+    #citation_tree.hidden {
+        display: none;
+    }
+
     /* ── Terminal detection screen ── */
     TerminalDetectionScreen {
         align: center middle;

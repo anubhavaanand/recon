@@ -5,17 +5,22 @@ from tui.app import ReconApp
 from storage.cache import CacheDatabase
 from cli.export import export_records
 from core.config import load_config, save_config, Config
-from core.search import search_all
+from core.search import search_all, ALL_SOURCES
 from rich.console import Console
 from rich.table import Table
 
 app = typer.Typer()
 config_app = typer.Typer()
 app.add_typer(config_app, name="config", help="Manage API keys and settings.")
+collection_app = typer.Typer()
+app.add_typer(collection_app, name="collection", help="Manage saved patent collection.")
 console = Console()
 
 @app.command()
-def search(query: Optional[str] = typer.Argument(None, help="Patent search query (optional - launches TUI if omitted)")):
+def search(
+    query: Optional[str] = typer.Argument(None, help="Patent search query (optional - launches TUI if omitted)"),
+    source: Optional[str] = typer.Option(None, "--source", "-s", help=f"Comma-separated source filter. Valid: {','.join(ALL_SOURCES)}. Default: all."),
+):
     """
     Search for patents.
     
@@ -29,10 +34,18 @@ def search(query: Optional[str] = typer.Argument(None, help="Patent search query
         ui.run()
         return
 
-    # CLI search mode
+    query = query.strip()
+    if not query:
+        console.print("[red]ERR: Empty search query. Provide a non-empty query string.[/red]")
+        raise typer.Exit(code=1)
+
+    sources = None
+    if source:
+        sources = [s.strip() for s in source.split(",")]
+
     try:
         console.print(f"[cyan]Searching for: {query}[/cyan]")
-        results = asyncio.run(search_all(query))
+        results = asyncio.run(search_all(query, sources=sources))
         
         if not results:
             console.print("[yellow]No results found.[/yellow]")
@@ -77,6 +90,7 @@ def run(
     query: Optional[str] = typer.Argument(None, help="Patent search query (optional - launches TUI if omitted)"),
     export_format: Optional[str] = typer.Option(None, "--export", "-e", help="Export format after run: json,csv,markdown,pdf"),
     show_table: bool = typer.Option(True, "--table/--no-table", help="Show a results table in the terminal"),
+    source: Optional[str] = typer.Option(None, "--source", "-s", help=f"Comma-separated source filter. Valid: {','.join(ALL_SOURCES)}. Default: all."),
 ):
     """
     Run an end-to-end recon flow: search, cache, add to collection and optionally export.
@@ -91,8 +105,17 @@ def run(
         return
 
     try:
+        query = query.strip()
+        if not query:
+            console.print("[red]ERR: Empty search query. Provide a non-empty query string.[/red]")
+            raise typer.Exit(code=1)
+
+        sources = None
+        if source:
+            sources = [s.strip() for s in source.split(",")]
+
         console.print(f"[cyan]Running recon for: {query}[/cyan]")
-        results = asyncio.run(search_all(query))
+        results = asyncio.run(search_all(query, sources=sources))
 
         if not results:
             console.print("[yellow]No results found for run.[/yellow]")
@@ -154,17 +177,19 @@ def config_set(
     epo_key: Optional[str] = typer.Option(None, "--epo-key", help="EPO Consumer Key (Insecure)"),
     epo_secret: Optional[str] = typer.Option(None, "--epo-secret", help="EPO Consumer Secret (Insecure)"),
     lens_key: Optional[str] = typer.Option(None, "--lens-key", help="Lens API Key (Insecure)"),
+    patsnap_key: Optional[str] = typer.Option(None, "--patsnap-key", help="PatSnap API Key (Insecure)"),
 ):
     """Set API keys for patent sources."""
     config = load_config()
     
     # If any keys are provided via CLI, update them and warn the user
-    if any([uspto_key, epo_key, epo_secret, lens_key]):
+    if any([uspto_key, epo_key, epo_secret, lens_key, patsnap_key]):
         console.print("[red]WARNING: Providing API keys via CLI arguments is insecure. They may be leaked in shell history or process lists.[/red]")
         if uspto_key: config.uspto_api_key = uspto_key
         if epo_key: config.epo_consumer_key = epo_key
         if epo_secret: config.epo_consumer_secret = epo_secret
         if lens_key: config.lens_api_key = lens_key
+        if patsnap_key: config.patsnap_api_key = patsnap_key
     else:
         # Fallback to secure interactive mode
         console.print("[yellow]Enter your API keys (leave blank to keep current):[/yellow]")
@@ -180,6 +205,9 @@ def config_set(
             
         lens = typer.prompt("Lens API Key", default=config.lens_api_key or "", hide_input=True, show_default=False)
         if lens: config.lens_api_key = lens
+
+        patsnap = typer.prompt("PatSnap API Key", default=config.patsnap_api_key or "", hide_input=True, show_default=False)
+        if patsnap: config.patsnap_api_key = patsnap
     
     save_config(config)
     typer.echo("Configuration updated successfully and secured (chmod 600).")
@@ -195,11 +223,12 @@ def config_show():
     typer.echo(f"EPO Consumer Key: {mask(config.epo_consumer_key)}")
     typer.echo(f"EPO Consumer Secret: {mask(config.epo_consumer_secret)}")
     typer.echo(f"Lens API Key: {mask(config.lens_api_key)}")
+    typer.echo(f"PatSnap API Key: {mask(config.patsnap_api_key)}")
 
 @config_app.command("test")
 def config_test():
     """Test configured API keys."""
-    from clients.patent_apis import USPTOClient, EPOClient, LensClient
+    from clients.patent_apis import USPTOClient, EPOClient, LensClient, PatsnapClient
     import asyncio
     
     async def run_tests():
@@ -207,6 +236,7 @@ def config_test():
         uspto = USPTOClient()
         epo = EPOClient()
         lens = LensClient()
+        patsnap = PatsnapClient()
         
         uspto_ok, uspto_msg = await uspto.validate_credentials()
         if uspto_ok:
@@ -225,8 +255,51 @@ def config_test():
             console.print(f"[green]✓ {lens_msg}[/green]")
         else:
             console.print(f"[red]✗ {lens_msg}[/red]")
+
+        patsnap_ok, patsnap_msg = await patsnap.validate_credentials()
+        if patsnap_ok:
+            console.print(f"[green]✓ {patsnap_msg}[/green]")
+        else:
+            console.print(f"[red]✗ {patsnap_msg}[/red]")
             
     asyncio.run(run_tests())
+
+@collection_app.command("list")
+def collection_list():
+    """List all patents in the saved collection."""
+    db = CacheDatabase()
+    records = db.get_collection()
+    if not records:
+        console.print("[yellow]Collection is empty.[/yellow]")
+        return
+
+    table = Table(title=f"Saved Collection ({len(records)} patents)")
+    table.add_column("#", style="dim")
+    table.add_column("ID", style="cyan", no_wrap=True)
+    table.add_column("Title", style="green")
+    table.add_column("Assignee", style="yellow")
+    table.add_column("Filed", style="magenta")
+
+    for i, r in enumerate(records, 1):
+        table.add_row(
+            str(i),
+            r.id or "[?]",
+            (r.title or "[?]")[:55],
+            (r.assignee or "[?]")[:35],
+            r.dates.get("filed", "[?]"),
+        )
+    console.print(table)
+
+@collection_app.command("clear")
+def collection_clear():
+    """Remove all patents from the saved collection."""
+    db = CacheDatabase()
+    count = db.collection_count()
+    if count == 0:
+        console.print("[yellow]Collection is already empty.[/yellow]")
+        return
+    db.clear_collection()
+    console.print(f"[green]Cleared {count} patents from collection.[/green]")
 
 if __name__ == "__main__":
     app()

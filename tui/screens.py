@@ -4,13 +4,15 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import Input, ListView, Static
 from textual.reactive import reactive
 
+
 from rich.markup import escape
 
 from tui.widgets.result_list import ResultList, ResultListItem
 from tui.widgets.info_tab import InfoTab
 from tui.widgets.claims_tab import ClaimsTab
 from tui.widgets.image_tab import ImageTab, detect_terminal_protocol, TerminalProtocol
-from core.search import search_all
+from tui.widgets.citation_tree import CitationTree
+from core.search import search_all, ALL_SOURCES, SOURCE_REGISTRY
 from core.intelligence import SynthesisEngine
 from storage.cache import CacheDatabase
 
@@ -297,10 +299,14 @@ class DetailScreen(Screen):
         ("e",      "export",         "Export"),
         ("o",      "open_external",  "Open External"),
         ("r",      "reader_mode",    "Reader Mode"),
-        ("c",      "citations",      "Citations"),
+        ("c",      "toggle_citations", "Citations"),
         ("f",      "family_tree",    "Family Tree"),
         ("t",      "translate",      "Translate"),
+        ("j",      "scroll_down",    "Down"),
+        ("k",      "scroll_up",      "Up"),
     ]
+
+    _show_citations: reactive[bool] = reactive(False)
 
     def __init__(self, record, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -309,13 +315,29 @@ class DetailScreen(Screen):
     def compose(self) -> ComposeResult:
         with Vertical():
             yield Static(self._build_content(), id="detail_content", classes="reader-content")
+            yield CitationTree(
+                "Press [c] to load citation graph...",
+                id="citation_tree",
+                classes="hidden",
+            )
             yield Static(self._status_line(), id="detail_status", classes="reader-status")
 
     def _status_line(self) -> str:
+        citation_hint = "hide cit." if self._show_citations else "citations"
         return (
-            "Esc: back  [s]ave  [d]ownload  [e]xport  [o]pen  "
-            "[r]eader  [c]itations  [f]amily  [t]ranslate"
+            f"Esc: back  [s]ave  [d]ownload  [e]xport  [o]pen  "
+            f"[r]eader  [c]{citation_hint}  [f]amily  [t]ranslate  "
+            f"[j/k] scroll"
         )
+
+    def watch__show_citations(self, showing: bool) -> None:
+        """Reactively toggle the citation tree visibility."""
+        tree = self.query_one("#citation_tree", CitationTree)
+        if showing:
+            tree.remove_class("hidden")
+        else:
+            tree.add_class("hidden")
+        self.query_one("#detail_status", Static).update(self._status_line())
 
     def _build_content(self) -> str:
         if not self.record:
@@ -323,6 +345,7 @@ class DetailScreen(Screen):
         r = self.record
         from tui.widgets.info_tab import _render_score_bar, _render_status_pill, _render_signal_dots
         from core.scoring import calculate_signal_score
+        from core.arbitrage import calculate_arbitrage_status, render_arbitrage_table
 
         score = calculate_signal_score(r.cross_references)
         status_pill = _render_status_pill(r.status)
@@ -334,6 +357,9 @@ class DetailScreen(Screen):
             claims_preview += f"{i}. {escape(claim[:80].strip())}...\n"
         if not claims_preview:
             claims_preview = "No claims available."
+
+        arb_status = calculate_arbitrage_status(r)
+        arb_table = render_arbitrage_table(arb_status)
 
         return (
             f"RECON ── FULL DETAIL ── {escape(r.id)}\n"
@@ -372,7 +398,7 @@ class DetailScreen(Screen):
             import subprocess
             url = self.record.image_urls[0]
             if is_safe_url(url):
-                subprocess.Popen(["xdg-open", url], stdout=-1, stderr=-1)
+                subprocess.Popen(["xdg-open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             else:
                 self.app.notify("ERR: Blocked unsafe URL.")
         else:
@@ -381,11 +407,32 @@ class DetailScreen(Screen):
     def action_reader_mode(self) -> None:
         self.app.push_screen(ReaderModeScreen(self.record))
 
-    def action_citations(self) -> None:
-        self.app.push_screen(CitationGraphScreen(self.record))
+    async def action_toggle_citations(self) -> None:
+        """Toggle the inline citation tree widget."""
+        self._show_citations = not self._show_citations
+        if self._show_citations:
+            self.app.notify("Loading citation graph...")
+            try:
+                from core.citations import fetch_citations
+                graph = await fetch_citations(
+                    self.record.id, self.record.assignee or ""
+                )
+                self.query_one("#citation_tree", CitationTree).render_graph(graph)
+                self.app.notify(f"Citations: {len(graph.backward)} back, {len(graph.forward)} fwd")
+            except Exception as e:
+                self.app.notify(f"ERR: Citation fetch failed: {e}", severity="error")
+                self._show_citations = False
 
     def action_family_tree(self) -> None:
         self.app.push_screen(FamilyTreeScreen(self.record))
+
+    def action_scroll_down(self) -> None:
+        target = self.query_one("#citation_tree", CitationTree) if self._show_citations else self.query_one("#detail_content", Static)
+        target.scroll_down(animate=False)
+
+    def action_scroll_up(self) -> None:
+        target = self.query_one("#citation_tree", CitationTree) if self._show_citations else self.query_one("#detail_content", Static)
+        target.scroll_up(animate=False)
 
     async def action_translate(self) -> None:
         from core.translation import translate_text
@@ -414,6 +461,7 @@ _HELP_TEXT = """\
 │  ACTIONS                                   │
 │  s         Save to collection              │
 │  e         Export collection               │
+│  S         Source filter                   │
 │  d         Download patent                 │
 │  r         Reader mode                     │
 │  c         Citation graph                  │
@@ -446,6 +494,7 @@ class SearchScreen(Screen):
         ("c",          "show_citation_graph",   "Citations"),
         ("/",          "focus_search",          "Search"),
         ("?",          "toggle_help",           "Help"),
+        ("S",          "toggle_source_filter",  "Source Filter"),
         ("h",          "prev_tab",              "Prev Tab"),
         ("l",          "next_tab",              "Next Tab"),
         ("left",       "prev_tab",              "Prev Tab"),
@@ -468,10 +517,17 @@ class SearchScreen(Screen):
     _active_tab: reactive[str] = reactive("info")
     _synthesis_mode: reactive[bool] = reactive(False)
 
+    EXPORT_FORMATS = ["json", "csv", "bibtex", "markdown", "pdf"]
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._results: list = []
         self._show_help = False
+        self._show_export = False
+        self._export_selected = 0
+        self._show_source_filter = False
+        self._source_filter_selected = 0
+        self._active_sources: set[str] = set(ALL_SOURCES)
 
     def compose(self) -> ComposeResult:
         # Top status bar
@@ -489,9 +545,13 @@ class SearchScreen(Screen):
                 yield ImageTab(id="image_tab")
         # Help overlay (hidden by default)
         yield Static(_HELP_TEXT, id="help_overlay", classes="hidden")
+        # Export format selector overlay (hidden by default)
+        yield Static("", id="export_overlay", classes="hidden")
+        # Source filter overlay (hidden by default)
+        yield Static("", id="source_filter_overlay", classes="hidden")
         # Bottom status bar
         yield Static(
-            "↑↓ nav  Enter:detail  h/l:tab  /:filter  s:save  e:export  r:reader  ?:help  q:quit",
+            "↑↓ nav  Enter:detail  h/l:tab  /:search  s:save  e:export  S:source  r:reader  ?:help  q:quit",
             id="status_bottom"
         )
 
@@ -529,6 +589,23 @@ class SearchScreen(Screen):
             except Exception:
                 pass
 
+    def on_key(self, event) -> None:
+        if self._show_source_filter:
+            handled = self._on_key_source_filter(event)
+            if handled:
+                event.stop()
+                return
+
+        if self._show_export:
+            handled = self._on_key_export_overlay(event)
+            if handled:
+                event.stop()
+                return
+
+        if self._show_help and event.key == "escape":
+            self.action_toggle_help()
+            event.stop()
+
     def on_mount(self) -> None:
         self._set_active_tab("info")
         self.query_one("#search_input", Input).focus()
@@ -540,7 +617,8 @@ class SearchScreen(Screen):
         self.query_one("#status_top", Static).update(
             f"RECON  ─────────────  Searching: {escape(query)}..."
         )
-        self._results = await search_all(query)
+        sources = list(self._active_sources) if self._active_sources and len(self._active_sources) < len(ALL_SOURCES) else None
+        self._results = await search_all(query, sources=sources)
         result_list = self.query_one(ResultList)
         result_list.clear()
 
@@ -548,8 +626,12 @@ class SearchScreen(Screen):
             result_list.mount(ResultListItem(record, i))
 
         count = len(self._results)
+        src_info = ""
+        if self._active_sources and len(self._active_sources) < len(ALL_SOURCES):
+            active_names = [SOURCE_REGISTRY[s][0] for s in sorted(self._active_sources)]
+            src_info = f"  │  sources: {','.join(active_names)}"
         self.query_one("#status_top", Static).update(
-            f"RECON  ──  \"{escape(query)}\"  │  {count} results"
+            f"RECON  ──  \"{escape(query)}\"  │  {count} results{src_info}"
         )
 
         if self._results:
@@ -680,7 +762,36 @@ class SearchScreen(Screen):
         if record:
             self.app.push_screen(CitationGraphScreen(record))
 
-    def action_export_collection(self) -> None:
+    def _render_export_overlay(self) -> str:
+        lines = [
+            "┌─ Export Format ──────────────────────────┐",
+            "│                                           │",
+        ]
+        for i, fmt in enumerate(self.EXPORT_FORMATS):
+            marker = "●" if i == self._export_selected else " "
+            lines.append(f"│  [{marker}] {fmt:<34}│")
+        lines += [
+            "│                                           │",
+            "│  ↑/↓ select  Enter confirm  Esc cancel    │",
+            "└───────────────────────────────────────────┘",
+        ]
+        return "\n".join(lines)
+
+    def _show_export_overlay(self) -> None:
+        self._show_export = True
+        self._export_selected = 0
+        overlay = self.query_one("#export_overlay", Static)
+        overlay.update(self._render_export_overlay())
+        overlay.remove_class("hidden")
+
+    def _hide_export_overlay(self) -> None:
+        self._show_export = False
+        overlay = self.query_one("#export_overlay", Static)
+        overlay.add_class("hidden")
+
+    def _confirm_export(self) -> None:
+        self._hide_export_overlay()
+        fmt = self.EXPORT_FORMATS[self._export_selected]
         from cli.export import export_records
         try:
             db = CacheDatabase()
@@ -688,10 +799,35 @@ class SearchScreen(Screen):
             if not records:
                 self.notify("Collection is empty. Nothing to export.")
                 return
-            export_records(records, "json", "collection_export.json")
-            self.notify(f"Exported {len(records)} patents to collection_export.json")
+            export_records(records, fmt, f"collection_export.{fmt}")
+            self.notify(f"Exported {len(records)} patents to collection_export.{fmt}")
         except Exception as e:
             self.notify(f"ERR: Export failed: {escape(str(e))}", severity="error")
+
+    def action_export_collection(self) -> None:
+        db = CacheDatabase()
+        if not db.get_collection():
+            self.notify("Collection is empty. Press 's' to save patents first.")
+            return
+        self._show_export_overlay()
+
+    def _on_key_export_overlay(self, event) -> bool:
+        """Handle key events when export overlay is visible. Returns True if handled."""
+        if event.key == "up":
+            self._export_selected = (self._export_selected - 1) % len(self.EXPORT_FORMATS)
+            self.query_one("#export_overlay", Static).update(self._render_export_overlay())
+            return True
+        elif event.key == "down":
+            self._export_selected = (self._export_selected + 1) % len(self.EXPORT_FORMATS)
+            self.query_one("#export_overlay", Static).update(self._render_export_overlay())
+            return True
+        elif event.key == "enter":
+            self._confirm_export()
+            return True
+        elif event.key == "escape":
+            self._hide_export_overlay()
+            return True
+        return False
 
     def action_download_patent(self) -> None:
         record = self._current_record()
@@ -699,6 +835,67 @@ class SearchScreen(Screen):
             self.notify(f"Download queued for {record.id}.")
         else:
             self.notify("No patent selected.")
+
+    # ── Source Filter Overlay ────────────────────────
+    def _render_source_filter(self) -> str:
+        lines = [
+            "┌─ Source Filter ────────────────────────────┐",
+            "│  [Space] toggle  [Enter] apply  [Esc] cancel│",
+            "│                                             │",
+        ]
+        for i, src in enumerate(ALL_SOURCES):
+            marker = "✓" if src in self._active_sources else " "
+            display = SOURCE_REGISTRY[src][0]
+            sel = "→" if i == self._source_filter_selected else " "
+            lines.append(f"│ {sel}[{marker}] {display:<35}│")
+        lines += [
+            "│                                             │",
+            "│  ↑/↓ navigate  Space toggle  Enter confirm  │",
+            "└─────────────────────────────────────────────┘",
+        ]
+        return "\n".join(lines)
+
+    def _show_source_filter_overlay(self) -> None:
+        self._show_source_filter = True
+        self._source_filter_selected = 0
+        overlay = self.query_one("#source_filter_overlay", Static)
+        overlay.update(self._render_source_filter())
+        overlay.remove_class("hidden")
+
+    def _hide_source_filter_overlay(self) -> None:
+        self._show_source_filter = False
+        overlay = self.query_one("#source_filter_overlay", Static)
+        overlay.add_class("hidden")
+
+    def action_toggle_source_filter(self) -> None:
+        self._show_source_filter_overlay()
+
+    def _on_key_source_filter(self, event) -> bool:
+        if event.key == "up":
+            self._source_filter_selected = (self._source_filter_selected - 1) % len(ALL_SOURCES)
+            self.query_one("#source_filter_overlay", Static).update(self._render_source_filter())
+            return True
+        elif event.key == "down":
+            self._source_filter_selected = (self._source_filter_selected + 1) % len(ALL_SOURCES)
+            self.query_one("#source_filter_overlay", Static).update(self._render_source_filter())
+            return True
+        elif event.key == "space":
+            src = ALL_SOURCES[self._source_filter_selected]
+            if src in self._active_sources:
+                self._active_sources.discard(src)
+            else:
+                self._active_sources.add(src)
+            self.query_one("#source_filter_overlay", Static).update(self._render_source_filter())
+            return True
+        elif event.key == "enter":
+            self._hide_source_filter_overlay()
+            count = len(self._active_sources)
+            self.app.notify(f"Source filter: {count}/{len(ALL_SOURCES)} active")
+            return True
+        elif event.key == "escape":
+            self._hide_source_filter_overlay()
+            return True
+        return False
 
     def action_focus_search(self) -> None:
         self.query_one("#search_input", Input).focus()

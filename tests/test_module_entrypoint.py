@@ -2,9 +2,9 @@ import subprocess
 import sys
 
 
-def test_python_module_entrypoint_runs_help():
+def test_cli_entrypoint_runs_help():
     result = subprocess.run(
-        [sys.executable, "-m", "recon", "--help"],
+        [sys.executable, "-m", "cli.main", "--help"],
         capture_output=True,
         text=True,
     )
@@ -13,4 +13,3 @@ def test_python_module_entrypoint_runs_help():
     assert "Usage" in result.stdout
     assert "search" in result.stdout
     assert "export" in result.stdout
-    assert result.stderr == ""

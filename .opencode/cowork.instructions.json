@@ -1,0 +1,36 @@
+{
+  "task": "Execute RECON evaluation framework across all 4 phases",
+  "project": "/home/anubhavanand/recon",
+  "phases": [
+    {
+      "name": "Foundation",
+      "tasks": ["Task 1.1: Import Validation Module", "Task 1.2: Health Check Script", "Task 8.1: Verify Tab Loading Fix", "Task 8.2: Verify Import Error Resolved"]
+    },
+    {
+      "name": "Component Testing",
+      "tasks": ["Task 2.1: Widget Component Tests", "Task 2.2: Tab Integration Tests", "Task 3.1: Enhance Scoring Tests", "Task 3.2: Enhance Search Tests"]
+    },
+    {
+      "name": "Advanced",
+      "tasks": ["Task 3.3: Cache Validation Tests", "Task 4.1: Performance Benchmarks", "Task 5.1: Error Message Audit"]
+    },
+    {
+      "name": "Automation",
+      "tasks": ["Task 6.1: Evaluation Report Generator", "Task 6.2: CI Integration", "Task 7.1: EVALUATION.md Runbook", "Task 7.2: Test Fixture Documentation"]
+    }
+  ],
+  "rules": [
+    "Read ALL spec docs first: constitution.md, spec.md, evaluation-framework.md, EVALUATION_TASKS.md",
+    "Execute phase by phase, never skip ahead",
+    "Run `pytest tests/` after each task to verify",
+    "Never silently drop entries, never impute missing data, never use AI for scoring",
+    "All scoring weights must be equal (+20 each)",
+    "Error messages must be dry, factual, actionable - no apologies",
+    "Use skills: test-driven-development, executing-plans, systematic-debugging, verifying-before-completion"
+  ],
+  "permissions": {
+    "edit": "allow all files in /home/anubhavanand/recon/",
+    "bash": "allow (pytest, python, git, pip), deny (rm -rf /, sudo)",
+    "destructive": "deny any system-wide operation"
+  }
+}

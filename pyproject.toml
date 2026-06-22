@@ -13,14 +13,17 @@ dependencies = [
     "Pillow",
     "rapidfuzz",
     "typer",
-    "fpdf2"
+    "fpdf2",
+    "beautifulsoup4",
+    "lxml",
+    "ddgs",
 ]
 
 [project.optional-dependencies]
 test = [
     "pytest",
     "pytest-asyncio",
-    "psutil"
+    "psutil",
 ]
 
 [tool.setuptools.packages.find]

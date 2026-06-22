@@ -68,6 +68,18 @@ class CacheDatabase:
             )
             conn.commit()
 
+    def clear_collection(self) -> None:
+        """Remove all patents from the collection."""
+        with self.get_connection() as conn:
+            conn.execute("DELETE FROM collections")
+            conn.commit()
+
+    def collection_count(self) -> int:
+        """Return the number of patents in the collection."""
+        with self.get_connection() as conn:
+            row = conn.execute("SELECT COUNT(*) AS cnt FROM collections").fetchone()
+            return row["cnt"] if row else 0
+
     def get_collection(self) -> list[PatentRecord]:
         """Retrieve all patent records in the local collection."""
         with self.get_connection() as conn:
