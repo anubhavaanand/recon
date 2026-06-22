@@ -26,7 +26,7 @@ Ensure `~/.local/bin` is in your `PATH`.
 ### Via install script (hacker method)
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/anubhavanand/recon/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/anubhavaanand/recon/main/install.sh | bash
 ```
 
 ### Via pip
@@ -38,7 +38,7 @@ pip install recon-patent
 ### From source
 
 ```bash
-git clone https://github.com/anubhavanand/recon.git
+git clone https://github.com/anubhavaanand/recon.git
 cd recon
 pip install -e .
 ```
