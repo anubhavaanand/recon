@@ -11,6 +11,14 @@ from rich.table import Table
 
 app = typer.Typer()
 config_app = typer.Typer()
+
+@app.callback(invoke_without_command=True)
+def default_behavior(ctx: typer.Context):
+    """RECON - Terminal-native patent research tool."""
+    if ctx.invoked_subcommand is None:
+        ui = ReconApp()
+        ui.run()
+
 app.add_typer(config_app, name="config", help="Manage API keys and settings.")
 collection_app = typer.Typer()
 app.add_typer(collection_app, name="collection", help="Manage saved patent collection.")
