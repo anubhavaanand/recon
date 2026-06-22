@@ -5,7 +5,7 @@ import pytest
 from cli import main as cli_main
 
 
-async def fake_search_all(query):
+async def fake_search_all(query, sources=None):
     # Return a small list of simple record-like objects (async to match real API)
     return [
         SimpleNamespace(id="US1", title="Quantum widget", dates={"filed": "2020-01-01"}, assignee="Acme"),

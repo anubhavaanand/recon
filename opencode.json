@@ -1,0 +1,35 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["AGENTS.md"],
+
+  "permission": {
+    "edit": "allow",
+    "bash": {
+      "rm *": "deny",
+      "sudo *": "deny",
+      "chmod *": "deny",
+      "dd *": "deny",
+      "mkfs *": "deny",
+      "shutdown *": "deny",
+      "reboot *": "deny",
+      "fdisk *": "deny",
+      "*": "allow"
+    },
+    "external_directory": {
+      "/home/anubhavanand/recon/**": "allow",
+      "~/.agents/**": "allow",
+      "~/.config/opencode/**": "allow",
+      "~/.cache/**": "allow",
+      "*": "allow"
+    },
+    "read": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "webfetch": "allow",
+    "websearch": "allow",
+    "task": "allow",
+    "skill": "allow",
+    "question": "allow",
+    "todowrite": "allow"
+  }
+}
