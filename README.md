@@ -15,10 +15,16 @@
 
 ## Installation
 
-### Via pipx (recommended)
+### Via PyPI (recommended)
 
 ```bash
 pipx install recon-patent
+```
+
+### Via GitHub
+
+```bash
+pipx install git+https://github.com/anubhavaanand/recon.git
 ```
 
 Ensure `~/.local/bin` is in your `PATH`.
