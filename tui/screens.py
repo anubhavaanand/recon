@@ -243,7 +243,7 @@ class ReaderModeScreen(Screen):
 
     def _status_line(self) -> str:
         total_claims = len(self.record.claims) if self.record and self.record.claims else 0
-        return f"Reader Mode │ {total_claims} claims │ [↑↓] scroll  [c]laims  [d]ownload  [s]ave  [Esc] back"
+        return f"Reader Mode │ {total_claims} claims │ (↑↓) scroll  (c)laims  (d)ownload  (s)ave  (Esc) back"
 
     def _build_content(self) -> str:
         if not self.record:
@@ -342,9 +342,9 @@ class DetailScreen(Screen):
         citation_hint = "hide cit." if self._show_citations else "citations"
         translate_hint = "orig." if self._show_translation else "translate"
         return (
-            f"Esc: back  [s]ave  [d]ownload  [e]xport  [o]pen  "
-            f"[r]eader  [c]{citation_hint}  [t]{translate_hint}  "
-            f"[f]amily  [j/k] scroll"
+            f"Esc: back  (s)ave  (d)ownload  (e)xport  (o)pen  "
+            f"(r)eader  (c){citation_hint}  (t){translate_hint}  "
+            f"(f)amily  (j/k) scroll"
         )
 
     def watch__show_citations(self, showing: bool) -> None:

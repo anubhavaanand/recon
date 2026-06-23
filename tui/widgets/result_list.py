@@ -36,7 +36,7 @@ class ResultListItem(ListItem):
         score = calculate_signal_score(self.record.cross_references)
         age = _age_str(self.record.dates.get("filed", ""))
         bar = _mini_bar(score)
-        rec_id = escape(self.record.id[:12].ljust(12))
+        rec_id = escape(self.record.id[:20].ljust(20))
         yield Label(f"{self.position:>2}  {rec_id}  {bar} {score:>3}%  {age}")
 
 

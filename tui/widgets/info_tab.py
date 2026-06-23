@@ -87,7 +87,7 @@ class InfoTab(Static):
                 f"─── Abstract ───────────────────────────────────\n"
                 f"{abstract}\n"
                 f"\n"
-                f"[d]ownload  [s]ave  [r]ead full  [o]pen"
+                f"(d)ownload  (s)ave  (r)ead full  (o)pen"
             )
             self.update(content)
         except Exception as e:

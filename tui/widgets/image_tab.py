@@ -160,7 +160,7 @@ class ImageTab(Static):
             f"FIGURE {idx + 1} OF {total}\n\n"
             f"{body}\n\n"
             f"{thumb_strip}\n\n"
-            f"[n]ext  [p]rev  [o]pen external  [d]ownload figure"
+            f"(n)ext  (p)rev  (o)pen external  (d)ownload figure"
         )
         self.update(content)
 

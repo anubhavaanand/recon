@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import time
 from typing import List
 from clients.base import BaseAsyncClient
 from core.models import PatentRecord
@@ -98,24 +100,171 @@ class WIPOClient(BaseAsyncClient):
         ]
 
 class EPOClient(BaseAsyncClient):
-    """EPO client using DuckDuckGo discovery + snippet scraping.
+    """EPO client with API-first, scraper-fallback pipeline.
 
-    EPO Register and Espacenet are behind Cloudflare and require OAuth for
-    the official OPS API. We bypass both with a free DDGS+BS4 scraper,
-    falling back to mock data when scraping fails.
+    Attempts the official EPO OPS REST API first. Falls back to a
+    DuckDuckGo + BeautifulSoup scraper if credentials are missing,
+    invalid, or the API returns any error.
     """
 
     def __init__(self):
-        super().__init__(base_url="https://register.epo.org", timeout=30.0)
+        super().__init__(base_url="https://ops.epo.org/3.2", timeout=30.0)
         self.config = load_config()
+        self.access_token: str | None = None
+        self.token_expiry: float = 0
+
+    async def _get_access_token(self) -> str | None:
+        """Obtain a Bearer token via OAuth 2.0 Client Credentials grant.
+
+        Returns the token string, or None if keys are missing/invalid.
+        """
+        if self.access_token and time.time() < self.token_expiry:
+            return self.access_token
+
+        key = self.config.epo_consumer_key
+        secret = self.config.epo_consumer_secret
+        if not key or not secret:
+            return None
+
+        auth_str = f"{key}:{secret}"
+        auth_b64 = base64.b64encode(auth_str.encode("utf-8")).decode("utf-8")
+
+        headers = {
+            "Authorization": f"Basic {auth_b64}",
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
+        try:
+            client = await self.get_client()
+            response = await client.post(
+                "https://ops.epo.org/3.2/auth/accesstoken",
+                data={"grant_type": "client_credentials"},
+                headers=headers,
+            )
+            if response.status_code != 200:
+                return None
+            data = response.json()
+            self.access_token = data.get("access_token")
+            expires_in = int(data.get("expires_in", 1200))
+            self.token_expiry = time.time() + expires_in - 60
+            return self.access_token
+        except Exception:
+            self.access_token = None
+            return None
 
     async def validate_credentials(self) -> tuple[bool, str]:
-        # EPO scraper requires no credentials
-        return True, "EPO scraper (no credentials needed)."
+        """Validate EPO credentials. Returns (ok, message)."""
+        key = self.config.epo_consumer_key
+        secret = self.config.epo_consumer_secret
+        if not key or not secret:
+            return False, "Missing/invalid keys. Falling back to scraper."
+
+        self.access_token = None
+        token = await self._get_access_token()
+        if token:
+            return True, "EPO API Key is VALID."
+        return False, "Missing/invalid keys. Falling back to scraper."
 
     async def search(self, query: str) -> List[PatentRecord]:
+        """API-first search; falls back to scraper on any failure."""
+        token = await self._get_access_token()
+        if token:
+            try:
+                records = await self._search_ops_api(query, token)
+                if records:
+                    return records
+            except Exception:
+                pass
+
+        return await self._search_epo_duckduckgo(query)
+
+    async def _search_ops_api(self, query: str, token: str) -> List[PatentRecord]:
+        """Search the official EPO OPS REST API and map to PatentRecord."""
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+        }
+        cql = f'txt="{query}"'
+        response = await self.get_with_backoff(
+            "/rest-services/published-data/search/biblio",
+            params={"q": cql},
+            headers=headers,
+        )
+        if response.status_code != 200:
+            response.raise_for_status()
+
+        data = response.json()
+        exchange_docs = (
+            data.get("ops:world-patent-data", {})
+            .get("ops:biblio-search", {})
+            .get("ops:search-result", {})
+            .get("exchange-documents", [])
+        )
+        if isinstance(exchange_docs, dict):
+            exchange_docs = [exchange_docs]
+
+        records: list[PatentRecord] = []
+        for doc in exchange_docs:
+            ed = doc.get("exchange-document", {})
+            biblio = ed.get("bibliographic-data", {})
+            country = ed.get("@country", "UN")
+            doc_num = ed.get("@doc-number", "UNKNOWN")
+            pid = f"{country}{doc_num}"
+
+            titles = biblio.get("invention-title", [])
+            if isinstance(titles, dict):
+                titles = [titles]
+            title = next(
+                (t.get("$", "[?]") for t in titles if t.get("@lang") == "en"),
+                titles[0].get("$", "[?]") if titles else "[?]",
+            )
+
+            abstracts = biblio.get("abstract", [])
+            if isinstance(abstracts, dict):
+                abstracts = [abstracts]
+            abstract = "[?]"
+            for a in abstracts:
+                if isinstance(a, dict) and a.get("@lang") == "en":
+                    p = a.get("p", {})
+                    if isinstance(p, dict):
+                        abstract = p.get("$", "[?]")
+                    break
+
+            parties = biblio.get("parties", {}).get("applicants", {}).get("applicant", [])
+            if isinstance(parties, dict):
+                parties = [parties]
+            assignee = parties[0].get("applicant-name", {}).get("name", {}).get("$", "[?]") if parties else "[?]"
+
+            date_refs = biblio.get("publication-reference", {}).get("document-id", [])
+            if isinstance(date_refs, dict):
+                date_refs = [date_refs]
+            filed = date_refs[0].get("date", {}).get("$", "[?]") if date_refs else "[?]"
+            if filed != "[?]" and len(filed) == 8:
+                filed = f"{filed[:4]}-{filed[4:6]}-{filed[6:]}"
+
+            records.append(PatentRecord(
+                id=pid,
+                title=title,
+                assignee=assignee,
+                dates={"filed": filed},
+                abstract=abstract,
+                claims=[],
+                image_urls=[],
+                status="active",
+                family_id=ed.get("@family-id", "UNKNOWN"),
+            ))
+
+        return records
+
+    async def _search_epo_duckduckgo(self, query: str) -> List[PatentRecord]:
+        """Fallback: DuckDuckGo discovery + snippet scraping.
+
+        When the official OPS API is unavailable (no keys, auth failure,
+        rate limit, network error), use DDGS to find EPO register pages
+        and extract what we can from snippets. Falls back to mock data.
+        """
         try:
             from clients.scrapers import search_epo_patents
+
             records = await search_epo_patents(query)
             if records:
                 return records
@@ -133,7 +282,7 @@ class EPOClient(BaseAsyncClient):
                 claims=[],
                 image_urls=[],
                 status="active",
-                family_id="F-EPO-1"
+                family_id="F-EPO-1",
             ),
         ]
 
