@@ -76,20 +76,8 @@ class WIPOClient(BaseAsyncClient):
         super().__init__(base_url="https://patentscope.wipo.int", timeout=30.0)
 
     async def search(self, query: str) -> List[PatentRecord]:
-        print(f"INFO: Source [WIPO] using mock data for '{query}'.")
-        return [
-            PatentRecord(
-                id=f"WO-{query[:4].upper()}",
-                title=f"WIPO Result for {query}",
-                assignee="WIPO Assignee",
-                dates={"filed": "2023-01-01"},
-                abstract=f"A WIPO patent related to {query}.",
-                claims=[],
-                image_urls=[],
-                status="active",
-                family_id="F123"
-            ),
-        ]
+        from clients.scrapers import search_wipo_patents
+        return await search_wipo_patents(query)
 
 class EPOClient(BaseAsyncClient):
     """EPO client with API-first, scraper-fallback pipeline.
@@ -169,7 +157,8 @@ class EPOClient(BaseAsyncClient):
             except Exception:
                 pass
 
-        return await self._search_epo_duckduckgo(query)
+        from clients.scrapers import search_epo_patents
+        return await search_epo_patents(query)
 
     async def _search_ops_api(self, query: str, token: str) -> List[PatentRecord]:
         """Search the official EPO OPS REST API and map to PatentRecord."""
@@ -435,31 +424,5 @@ class PatsnapClient(BaseAsyncClient):
 
 class GooglePatentsClient(BaseAsyncClient):
     async def search(self, query: str) -> List[PatentRecord]:
-        print(f"INFO: Source [GooglePatents] using mock data for '{query}'.")
-        return [
-            PatentRecord(
-                id=f"US-MOCK-{query[:3].upper()}-1",
-                title=f"Mock System for {query.title()}",
-                assignee="Mock Assignee Inc.",
-                dates={"filed": "2023-10-01"},
-                abstract=f"A novel approach to {query} utilizing mock algorithms.",
-                claims=["1. A system comprising a mock processor.", "2. The system of claim 1, further comprising mock memory."],
-                image_urls=[],
-                status="active",
-                family_id="F-MOCK-1"
-            ),
-            PatentRecord(
-                id=f"EP-MOCK-{query[:3].upper()}-2",
-                title=f"Advanced {query.title()} Methods",
-                assignee="Global Mock Corp.",
-                dates={"filed": "2022-05-15"},
-                abstract=f"An advanced method for implementing {query} in distributed systems.",
-                claims=[
-                    f"1. A method for {query}.",
-                    f"2. The method of claim 1, further comprising a verification step.",
-                ],
-                image_urls=[],
-                status="pending",
-                family_id="F-MOCK-2"
-            ),
-        ]
+        from clients.scrapers import search_google_patents
+        return await search_google_patents(query)
