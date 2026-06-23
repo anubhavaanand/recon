@@ -186,3 +186,19 @@ async def test_assignee_view_toggle():
         await pilot.press("a")
         await pilot.pause(0.5)
         assert "hidden" in overlay.classes
+
+
+@pytest.mark.asyncio
+async def test_scrollbar_override():
+    """Verify ScrollBarRender VERTICAL_BARS and HORIZONTAL_BARS use full block characters."""
+    from tui.app import ReconApp
+    from textual.scrollbar import ScrollBarRender
+    async with ReconApp().run_test() as pilot:
+        await pilot.pause(0.1)
+        assert "█" in ScrollBarRender.VERTICAL_BARS
+        assert "█" in ScrollBarRender.HORIZONTAL_BARS
+        # Ensure fractional block characters are not present in scrollbar render chars
+        for char in ['▊', '▎', '▏', '▍', '▌', '▋', '▊']:
+            assert char not in ScrollBarRender.HORIZONTAL_BARS
+            assert char not in ScrollBarRender.VERTICAL_BARS
+
