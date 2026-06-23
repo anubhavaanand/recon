@@ -27,12 +27,16 @@ async def test_uspto_search_mocked(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_epo_search_no_keys_falls_to_mock(monkeypatch):
-    """When no EPO keys configured, fall through to mock data."""
+    """When no EPO keys configured, fall through to scraper."""
     monkeypatch.setattr("clients.patent_apis.load_config", lambda: Config(epo_consumer_key=None, epo_consumer_secret=None))
+    async def mock_search_epo(query):
+        return [PatentRecord(id="EP123", title="Mock Scraped", assignee="[?]", dates={}, abstract="[?]", claims=[], image_urls=[], status="", family_id="")]
+    monkeypatch.setattr("clients.scrapers.search_epo_patents", mock_search_epo)
+    
     client = EPOClient()
     results = await client.search("quantum computing")
     assert len(results) > 0
-    assert "EPMOCK" in results[0].id
+    assert "EP123" in results[0].id
 
 
 @pytest.mark.asyncio
@@ -86,7 +90,7 @@ async def test_epo_search_valid_keys_uses_api(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_epo_search_api_failure_falls_to_mock(monkeypatch):
-    """When OPS API errors, fall through to mock data."""
+    """When OPS API errors, fall through to scraper."""
     monkeypatch.setattr("clients.patent_apis.load_config", lambda: Config(epo_consumer_key="KEY", epo_consumer_secret="SECRET"))
 
     async def mock_token_post(self, url, data=None, headers=None):
@@ -98,10 +102,14 @@ async def test_epo_search_api_failure_falls_to_mock(monkeypatch):
     monkeypatch.setattr(BaseAsyncClient, "get_with_backoff", mock_ops_get)
     monkeypatch.setattr("httpx.AsyncClient.post", mock_token_post)
 
+    async def mock_search_epo(query):
+        return [PatentRecord(id="EP123", title="Mock Scraped", assignee="[?]", dates={}, abstract="[?]", claims=[], image_urls=[], status="", family_id="")]
+    monkeypatch.setattr("clients.scrapers.search_epo_patents", mock_search_epo)
+
     client = EPOClient()
     results = await client.search("quantum computing")
     assert len(results) > 0
-    assert "EPMOCK" in results[0].id
+    assert "EP123" in results[0].id
 
 
 @pytest.mark.asyncio
@@ -142,12 +150,15 @@ async def test_epo_validate_credentials_invalid_keys(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_wipo_search_returns_mock():
-    """WIPO now returns mock data directly."""
+async def test_wipo_search_returns_mock(monkeypatch):
+    """WIPO now returns scraped data directly."""
+    async def mock_search_wipo(query):
+        return [PatentRecord(id="WO123", title="Mock Scraped", assignee="[?]", dates={}, abstract="[?]", claims=[], image_urls=[], status="", family_id="")]
+    monkeypatch.setattr("clients.scrapers.search_wipo_patents", mock_search_wipo)
     client = WIPOClient()
     results = await client.search("quantum computing")
     assert len(results) > 0
-    assert "WO" in results[0].id
+    assert "WO123" in results[0].id
 
 
 @pytest.mark.asyncio
@@ -160,11 +171,14 @@ async def test_lens_search_returns_mock():
 
 
 @pytest.mark.asyncio
-async def test_google_patents_search_returns_mock():
-    """GooglePatents now returns mock data directly."""
+async def test_google_patents_search_returns_mock(monkeypatch):
+    """GooglePatents now returns scraped data directly."""
+    async def mock_search_google(query):
+        return [PatentRecord(id="US123", title="Mock Scraped", assignee="[?]", dates={}, abstract="[?]", claims=[], image_urls=[], status="", family_id="")]
+    monkeypatch.setattr("clients.scrapers.search_google_patents", mock_search_google)
     client = GooglePatentsClient()
     results = await client.search("quantum computing")
-    assert len(results) == 2
+    assert len(results) == 1
 
 
 @pytest.mark.asyncio

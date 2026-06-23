@@ -83,6 +83,7 @@ async def test_tab_content_loads_on_selection():
         return MagicMock()
 
     screen.query_one = mock_query_one
+    screen._enrich_current = MagicMock()
     screen._load_record(SAMPLE_RECORD)
     mock_info.update_record.assert_called_once_with(SAMPLE_RECORD)
 
@@ -113,6 +114,7 @@ async def test_tab_no_blank_content_after_switch():
 
     screen.query_one = mock_query_one
     screen._active_tab = "claims"
+    screen._enrich_current = MagicMock()
     screen._load_record(SAMPLE_RECORD)
     assert mock_info.update_record.called
     assert mock_claims.reset.called
@@ -157,6 +159,7 @@ async def test_preview_populated_on_record_load():
         return MagicMock()
 
     screen.query_one = mock_query_one
+    screen._enrich_current = MagicMock()
     screen._load_record(SAMPLE_RECORD)
     mock_info.update_record.assert_called_once_with(SAMPLE_RECORD)
     assert mock_claims.reset.called
@@ -175,6 +178,6 @@ async def test_render_tab_bar():
     from tui.screens import SearchScreen
     screen = SearchScreen()
     bar = screen._render_tab_bar()
-    assert "[Info]" in bar
+    assert "<Info>" in bar
     assert " Claims " in bar
     assert " Image " in bar
