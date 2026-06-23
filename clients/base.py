@@ -30,7 +30,7 @@ class BaseAsyncClient:
         for attempt in range(max_retries + 1):
             response = await client.get(full_url, params=params, headers=headers)
             
-            if response.status_code == 429:
+            if response.status_code in (429, 503, 504):
                 if attempt < max_retries:
                     delay = backoff_delays[attempt]
                     await asyncio.sleep(delay)

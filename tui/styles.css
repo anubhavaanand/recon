@@ -1,0 +1,304 @@
+/* ══════════════════════════════════════════════
+   RECON — Tokyo Night Design System
+   Palette: bg:$bg, primary:$primary
+   ══════════════════════════════════════════════ */
+
+$bg: #1a1b26;
+$surface: #24283b;
+$text: #a9b1d6;
+$border: #414868;
+$primary: #7aa2f7;
+$error: #f7768e;
+$secondary: #bb9af7;
+
+/* ── Root ── */
+Screen {
+    background: $bg;
+    color: $text;
+}
+
+/* ── Status bar (top + bottom static) ── */
+#status_top {
+    width: 100%;
+    height: 1;
+    background: $surface;
+    color: $primary;
+    padding: 0 1;
+}
+#status_bottom {
+    width: 100%;
+    height: 1;
+    background: $surface;
+    color: #565f89;
+    padding: 0 1;
+}
+
+/* ── Search input ── */
+#search_input {
+    width: 100%;
+    height: 3;
+    border: none;
+    background: $surface;
+    color: $text;
+    border-bottom: solid $border;
+}
+#search_input:focus {
+    border-bottom: solid $primary;
+}
+#search_input.input-error {
+    border: solid $error;
+}
+
+/* ── Two-column layout ── */
+#main_horizontal {
+    height: 1fr;
+    width: 100%;
+}
+
+/* ── Results list ── */
+#result_list {
+    width: 32;
+    height: 100%;
+    border-right: solid $border;
+    background: $bg;
+}
+ResultListItem {
+    height: 1;
+    padding: 0 1;
+    color: #565f89;
+}
+ResultListItem:hover {
+    background: $surface;
+    color: $text;
+}
+ResultListItem.--highlight {
+    background: #1f2937;
+    color: $primary;
+}
+
+/* ── Preview / detail column ── */
+#preview_column {
+    width: 1fr;
+    height: 100%;
+    background: $bg;
+}
+
+/* ── Tab bar (custom, rule-based) ── */
+#tab_bar {
+    width: 100%;
+    height: 1;
+    background: $surface;
+    color: #565f89;
+    padding: 0 1;
+}
+
+/* ── Tab content panes ── */
+#info_tab {
+    width: 100%;
+    height: 1fr;
+    padding: 1 2;
+    overflow-y: auto;
+    color: $text;
+}
+#claims_tab {
+    width: 100%;
+    height: 1fr;
+    padding: 1 2;
+    overflow-y: auto;
+    color: $text;
+    display: none;
+}
+#image_tab {
+    width: 100%;
+    height: 1fr;
+    padding: 1 2;
+    overflow-y: auto;
+    color: $text;
+    display: none;
+}
+.tab-active {
+    display: block;
+}
+
+/* ── Help overlay ── */
+#help_overlay {
+    width: 48;
+    height: auto;
+    background: $surface;
+    color: $text;
+    border: solid $border;
+    offset: 34 2;
+    padding: 0 1;
+    layer: overlay;
+}
+#help_overlay.hidden {
+    display: none;
+}
+
+/* ── Export format overlay ── */
+#export_overlay {
+    width: 44;
+    height: auto;
+    background: $surface;
+    color: $text;
+    border: solid $border;
+    offset: 38 5;
+    padding: 0 1;
+    layer: overlay;
+}
+#export_overlay.hidden {
+    display: none;
+}
+
+/* ── Source filter overlay ── */
+#source_filter_overlay {
+    width: 48;
+    height: auto;
+    background: $surface;
+    color: $text;
+    border: solid $border;
+    offset: 34 2;
+    padding: 0 1;
+    layer: overlay;
+}
+#source_filter_overlay.hidden {
+    display: none;
+}
+
+/* ── Assignee Portfolio View overlay ── */
+#assignee_overlay {
+    width: 48;
+    height: auto;
+    background: $surface;
+    color: $text;
+    border: solid $secondary;
+    offset: 34 2;
+    padding: 0 1;
+    layer: overlay;
+}
+#assignee_overlay.hidden {
+    display: none;
+}
+
+/* ── Citation tree (inline, toggled via hidden class) ── */
+#citation_tree {
+    width: 100%;
+    height: 1fr;
+    padding: 1 2;
+    overflow-y: auto;
+    color: $text;
+    background: $bg;
+}
+#citation_tree.hidden {
+    display: none;
+}
+
+/* ── Command palette (inline, / key) ── */
+#command_palette {
+    width: 48;
+    height: auto;
+    max-height: 14;
+    background: $surface;
+    color: $text;
+    border: solid $primary;
+    offset: 0 3;
+    layer: overlay;
+    padding: 0 1;
+    overflow-y: auto;
+}
+#command_palette.hidden {
+    display: none;
+}
+
+/* ── Terminal detection screen ── */
+TerminalDetectionScreen {
+    align: center middle;
+    background: $bg;
+}
+#terminal_detection_content {
+    width: 60;
+    height: auto;
+    border: solid $border;
+    background: $surface;
+    padding: 1 2;
+    color: $text;
+}
+
+/* ── Reader/Detail/Citation screens ── */
+#reader_content {
+    width: 100%;
+    height: 1fr;
+    padding: 1 4;
+    overflow-y: auto;
+    color: $text;
+}
+#reader_status {
+    width: 100%;
+    height: 1;
+    padding: 0 2;
+    background: $surface;
+    color: #565f89;
+}
+.reader-content {
+    padding: 1 4;
+    overflow-y: auto;
+}
+.reader-status {
+    width: 100%;
+    height: 1;
+    padding: 0 2;
+    background: $surface;
+    color: #565f89;
+}
+
+/* Generated Themes */
+
+Screen.theme-arctic-frost {
+    background: #d4e4f7;
+    color: #fafafa;
+}
+
+Screen.theme-botanical-garden {
+    background: #4a7c59;
+    color: #f5f3ed;
+}
+
+Screen.theme-desert-rose {
+    background: #d4a5a5;
+    color: #5d2e46;
+}
+
+Screen.theme-forest-canopy {
+    background: #2d4a2b;
+    color: #faf9f6;
+}
+
+Screen.theme-golden-hour {
+    background: #f4a900;
+    color: #4a403a;
+}
+
+Screen.theme-midnight-galaxy {
+    background: #2b1e3e;
+    color: #e6e6fa;
+}
+
+Screen.theme-modern-minimalist {
+    background: #36454f;
+    color: #ffffff;
+}
+
+Screen.theme-ocean-depths {
+    background: #1a2332;
+    color: #f1faee;
+}
+
+Screen.theme-sunset-boulevard {
+    background: #e76f51;
+    color: #264653;
+}
+
+Screen.theme-tech-innovation {
+    background: #0066ff;
+    color: #ffffff;
+}
