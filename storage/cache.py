@@ -424,6 +424,7 @@ class CacheDatabase:
             "search_results", "collections", "citations", "search_history",
             "cache_health", "scraper_metadata", "export_log", "terminal_sessions",
         ]
+        table_data = []
         with contextlib.closing(self.get_connection()) as conn:
             with conn:
                 for table in tables:
@@ -433,6 +434,7 @@ class CacheDatabase:
                     except Exception:
                         row_count = -1
                     corrupt = 0
+                    expired = 0
                     if table == "search_results":
                         try:
                             for row in conn.execute("SELECT results_json FROM search_results").fetchall():
@@ -440,6 +442,12 @@ class CacheDatabase:
                                     json.loads(row[0] if isinstance(row, tuple) else row["results_json"])
                                 except (json.JSONDecodeError, TypeError):
                                     corrupt += 1
+                        except Exception:
+                            pass
+                        try:
+                            expired = conn.execute(
+                                "SELECT COUNT(*) FROM search_results WHERE expires_at < CURRENT_TIMESTAMP"
+                            ).fetchone()[0]
                         except Exception:
                             pass
 
@@ -450,9 +458,29 @@ class CacheDatabase:
                            VALUES (?, ?, ?, ?, ?)""",
                         (table, row_count, corrupt, round(db_size, 2), vacuum_needed),
                     )
-        return {"db_size_mb": round(db_size, 2), "tables_checked": len(tables)}
+                    table_data.append({
+                        "table": table,
+                        "row_count": row_count,
+                        "corrupt": corrupt,
+                        "expired_rows": expired,
+                    })
+        return {
+            "db_size_mb": round(db_size, 2),
+            "tables_checked": len(tables),
+            "tables": table_data,
+        }
 
     # ── scraper_metadata ─────────────────────────────────────────────────────
+
+    def get_all_source_health(self) -> list[dict]:
+        with contextlib.closing(self.get_connection()) as conn:
+            rows = conn.execute(
+                """SELECT source_name, base_url, auth_type, rate_limit_per_minute,
+                          requests_this_hour, last_request_at, last_error_at,
+                          last_error_code, consecutive_errors, circuit_open
+                   FROM scraper_metadata ORDER BY source_name"""
+            ).fetchall()
+            return [dict(r) for r in rows]
 
     def get_scraper_metadata(self, source_name: str) -> Optional[dict]:
         with contextlib.closing(self.get_connection()) as conn:

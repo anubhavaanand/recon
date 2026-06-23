@@ -28,11 +28,21 @@ def sanitize_query(query: str) -> str:
     query = query.strip()
     return query
 
-_SAFE_MODE_ACTIVE = False
-
-
-def is_safe_mode() -> bool:
-    return _SAFE_MODE_ACTIVE
+def _check_circuit_breakers(sources: list[str]) -> bool:
+    """Returns True if all requested sources have open circuits."""
+    try:
+        db = CacheDatabase()
+        rows = db.get_all_source_health()
+        if not isinstance(rows, list):
+            return False
+        all_open = all(
+            row.get("circuit_open", False)
+            for row in rows
+            if row.get("source_name") in sources
+        )
+        return bool(rows) and all_open
+    except Exception:
+        return False
 
 
 # Source registry: maps short name -> (display name, class)
@@ -88,6 +98,15 @@ async def search_all(query: str, sources: Optional[List[str]] = None) -> List[Pa
     if sources is None:
         sources = ALL_SOURCES
 
+    safe_mode = _check_circuit_breakers(sources)
+    if safe_mode:
+        stale = _get_stale_cache(db, query)
+        if stale:
+            logger.warning("Safe mode active. Serving stale cache.")
+        else:
+            logger.warning("Safe mode active. No cache available.")
+        return sort_and_merge_results(stale) if stale else []
+
     clients = []
     for src in sources:
         src_lower = src.strip().lower()
@@ -105,13 +124,21 @@ async def search_all(query: str, sources: Optional[List[str]] = None) -> List[Pa
     results_nested = await asyncio.gather(*tasks, return_exceptions=True)
 
     all_records = []
+    errors = 0
     for res in results_nested:
         if isinstance(res, list):
             all_records.extend(res)
         elif isinstance(res, Exception):
+            errors += 1
             print(f"ERR: Search source failed: {res}")
 
     merged = sort_and_merge_results(all_records)
+
+    if errors == len(clients):
+        stale = _get_stale_cache(db, query)
+        if stale:
+            print("ERR: All sources failed. Serving cached results.")
+            return sort_and_merge_results(stale)
 
     if merged:
         db.save_search_results(query, merged)

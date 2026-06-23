@@ -382,6 +382,60 @@ def admin_cache_clear(
     console.print(f"[green]Deleted {deleted} cached results older than {older_than} days.[/green]")
 
 
+@admin_app.command("diagnostics")
+def admin_diagnostics():
+    """Show source health: circuit breaker status, error counts, rate limits."""
+    db = CacheDatabase()
+    sources = db.get_all_source_health()
+
+    if not sources:
+        console.print("[yellow]No source metadata recorded. Run a search first to populate.[/yellow]")
+        return
+
+    table = Table(title="Source Health")
+    table.add_column("Source", style="cyan")
+    table.add_column("Auth", style="magenta")
+    table.add_column("Rate Limit", style="yellow")
+    table.add_column("Req/hr", style="green")
+    table.add_column("Errors", style="red")
+    table.add_column("Last Error", style="red")
+    table.add_column("Circuit", style="bold")
+
+    for s in sources:
+        circuit_status = "[red]OPEN[/red]" if s["circuit_open"] else "[green]CLOSED[/green]"
+        last_err = s["last_error_code"] or "—"
+        last_err_time = (s["last_error_at"] or "")[:19] if s.get("last_error_at") else "—"
+        table.add_row(
+            s["source_name"],
+            s["auth_type"] or "—",
+            str(s["rate_limit_per_minute"] or "—"),
+            str(s["requests_this_hour"] or "0"),
+            str(s["consecutive_errors"] or "0"),
+            f"{last_err} @ {last_err_time}",
+            circuit_status,
+        )
+
+    console.print(table)
+    console.print("\n[dim]Sources with OPEN circuits are skipped during searches.[/dim]")
+
+
+@admin_app.command("migrate")
+def admin_migrate():
+    """Run pending database migrations."""
+    from storage.migrate import migrate as run_migrations, validate
+    db = CacheDatabase()
+    applied = run_migrations(db.db_path)
+    if applied:
+        console.print(f"[green]Applied migrations: {', '.join(applied)}[/green]")
+    else:
+        console.print("[green]Database already up to date.[/green]")
+    missing = validate(db.db_path)
+    if missing:
+        console.print(f"[red]Missing tables: {', '.join(missing)}[/red]")
+    else:
+        console.print("[green]All tables present.[/green]")
+
+
 @admin_app.command("cache-vacuum")
 def admin_cache_vacuum():
     """Run SQLite VACUUM to reclaim disk space."""
