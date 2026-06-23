@@ -139,7 +139,6 @@ recon/
 │   └── config.py        — Config management (.env + JSON)
 ├── clients/
 │   ├── patent_apis.py   — USPTO, PatSnap, Google, WIPO, Lens, EPO clients
-│   ├── scrapers.py      — DDGS + BeautifulSoup scrapers (WIPO, Lens, EPO, Google)
 │   └── base.py          — BaseAsyncClient with rate-limit + backoff
 ├── tui/
 │   ├── app.py           — Textual App + CSS

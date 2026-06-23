@@ -2,7 +2,7 @@
 
 Covers:
 - Cache layer (get/save enrichment cache)
-- Enrichment function (DDGS discovery, fallback, error handling, caching)
+- Enrichment function (native API calls, fallback, error handling, caching)
 - Search pipeline integration (top-5 enrichment, exception isolation)
 - Lazy enrichment in TUI (skip already-enriched records)
 - Signal domain coverage
@@ -48,10 +48,19 @@ def record_empty_assignee() -> PatentRecord:
 
 
 @pytest.fixture
-def mock_ddgs_results():
-    """Standard DDGS result dicts that _search_signal expects."""
+def mock_cross_refs():
+    """Standard mock cross-references returned by API handlers."""
     return [
-        {"href": "https://example.com/result", "title": "Some Title", "body": "Snippet body."},
+        CrossReference(source="arxiv", url="https://arxiv.org/abs/1234", date="2023-01-01",
+                       metadata={"title": "Arxiv Paper", "snippet": "Research abstract."}),
+        CrossReference(source="nsf", url="https://nsf.gov/award/1", date="2023-02-01",
+                       metadata={"title": "NSF Grant", "snippet": "Grant abstract."}),
+        CrossReference(source="doe", url="https://osti.gov/biblio/1", date="2023-03-01",
+                       metadata={"title": "DOE Report", "snippet": "Report abstract."}),
+        CrossReference(source="nih", url="https://reporter.nih.gov/1", date="2023-04-01",
+                       metadata={"title": "NIH Project", "snippet": "Project abstract."}),
+        CrossReference(source="sec", url="https://sec.gov/edgar/1", date="2023-05-01",
+                       metadata={"title": "SEC Filing", "snippet": ""}),
     ]
 
 
@@ -105,80 +114,92 @@ def test_save_and_get_enrichment_cache(tmp_path):
 # ═══════════════════════════════════════════════════════════════
 
 @pytest.mark.asyncio
-async def test_enrich_patent_adds_cross_references(basic_record, mock_ddgs_results):
-    """Mock DDGS to return results for all 4 domains; verify record has 4 cross_references."""
+async def test_enrich_patent_adds_cross_references(basic_record, mock_cross_refs):
+    """Mock all 5 API handlers to return results; verify record gets 5 cross_references."""
     from core.enrichment import enrich_patent
 
-    with patch("core.enrichment.CacheDatabase") as mock_cache_cls, \
-         patch("core.enrichment.DDGS") as mock_ddgs:
+    with patch("core.enrichment.CacheDatabase") as mock_cache_cls:
         mock_db = MagicMock()
         mock_cache_cls.return_value = mock_db
         mock_db.get_enrichment_cache.return_value = None
 
-        # Every call to DDGS().text() returns a result
-        mock_ddgs.return_value.__enter__.return_value.text.return_value = mock_ddgs_results
+        with (patch("core.enrichment._search_arxiv", new_callable=AsyncMock) as mock_a,
+              patch("core.enrichment._search_nsf", new_callable=AsyncMock) as mock_nsf,
+              patch("core.enrichment._search_doe", new_callable=AsyncMock) as mock_d,
+              patch("core.enrichment._search_nih", new_callable=AsyncMock) as mock_nih,
+              patch("core.enrichment._search_sec", new_callable=AsyncMock) as mock_s):
+            mock_a.return_value = mock_cross_refs[0]
+            mock_nsf.return_value = mock_cross_refs[1]
+            mock_d.return_value = mock_cross_refs[2]
+            mock_nih.return_value = mock_cross_refs[3]
+            mock_s.return_value = mock_cross_refs[4]
 
-        result = await enrich_patent(basic_record)
+            result = await enrich_patent(basic_record)
 
-        assert len(result.cross_references) == 6
-        sources = {cr.source for cr in result.cross_references}
-        assert sources == {"nih", "sec", "arxiv", "opencorporates", "nsf", "doe"}
-        # Verify each cross-reference has a valid URL
-        for cr in result.cross_references:
-            assert cr.url == "https://example.com/result"
-        # Verify save_enrichment_cache was called
-        mock_db.save_enrichment_cache.assert_called_once()
+            assert len(result.cross_references) == 5
+            sources = {cr.source for cr in result.cross_references}
+            assert sources == {"arxiv", "nsf", "doe", "nih", "sec"}
+            for cr in result.cross_references:
+                assert cr.url is not None
+            mock_db.save_enrichment_cache.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_enrich_patent_handles_empty_assignee(record_empty_assignee, mock_ddgs_results):
-    """Assignee is '[?]'; should fall back to title words. Verify still tries to enrich."""
+async def test_enrich_patent_handles_empty_assignee(record_empty_assignee, mock_cross_refs):
+    """Assignee is '[?]'; should fall back to title words."""
     from core.enrichment import enrich_patent
 
-    with patch("core.enrichment.CacheDatabase") as mock_cache_cls, \
-         patch("core.enrichment.DDGS") as mock_ddgs:
+    with patch("core.enrichment.CacheDatabase") as mock_cache_cls:
         mock_db = MagicMock()
         mock_cache_cls.return_value = mock_db
         mock_db.get_enrichment_cache.return_value = None
 
-        mock_ddgs.return_value.__enter__.return_value.text.return_value = mock_ddgs_results
+        with (patch("core.enrichment._search_arxiv", new_callable=AsyncMock) as mock_a,
+              patch("core.enrichment._search_nsf", new_callable=AsyncMock) as mock_nsf,
+              patch("core.enrichment._search_doe", new_callable=AsyncMock) as mock_d,
+              patch("core.enrichment._search_nih", new_callable=AsyncMock) as mock_nih,
+              patch("core.enrichment._search_sec", new_callable=AsyncMock) as mock_s):
+            mock_a.return_value = mock_cross_refs[0]
+            mock_nsf.return_value = mock_cross_refs[1]
+            mock_d.return_value = mock_cross_refs[2]
+            mock_nih.return_value = mock_cross_refs[3]
+            mock_s.return_value = mock_cross_refs[4]
 
-        result = await enrich_patent(record_empty_assignee)
+            result = await enrich_patent(record_empty_assignee)
 
-        # Should still find results despite missing assignee
-        assert len(result.cross_references) == 6
-        # Verify text() was called with terms from the title, not "[?]"
-        text_mock = mock_ddgs.return_value.__enter__.return_value.text
-        # Collect all query strings that were searched
-        all_queries = [call[0][0] for call in text_mock.call_args_list]
-        # At least one query should contain "Advanced" (from title)
-        assert any("Advanced" in q for q in all_queries)
+            assert len(result.cross_references) == 5
+            # Verify that the query used title words (assignee was "[?]")
+            mock_a.assert_called_once()
+            query_arg = mock_a.call_args[0][0]
+            assert "Advanced" in query_arg
 
 
 @pytest.mark.asyncio
 async def test_enrich_patent_graceful_timeout(basic_record):
-    """Mock DDGS to raise Exception; verify original record returned unchanged."""
+    """All API handlers return None; verify original record returned unchanged."""
     from core.enrichment import enrich_patent
 
-    with patch("core.enrichment.CacheDatabase") as mock_cache_cls, \
-         patch("core.enrichment.DDGS") as mock_ddgs:
+    with patch("core.enrichment.CacheDatabase") as mock_cache_cls:
         mock_db = MagicMock()
         mock_cache_cls.return_value = mock_db
         mock_db.get_enrichment_cache.return_value = None
 
-        # Make text() raise an exception (simulating network timeout)
-        mock_ddgs.return_value.__enter__.return_value.text.side_effect = Exception("Simulated timeout")
+        with (patch("core.enrichment._search_arxiv", new_callable=AsyncMock) as mock_a,
+              patch("core.enrichment._search_nsf", new_callable=AsyncMock),
+              patch("core.enrichment._search_doe", new_callable=AsyncMock),
+              patch("core.enrichment._search_nih", new_callable=AsyncMock),
+              patch("core.enrichment._search_sec", new_callable=AsyncMock)):
+            mock_a.return_value = None
 
-        result = await enrich_patent(basic_record)
+            result = await enrich_patent(basic_record)
 
-        # Original record returned unchanged
-        assert result is basic_record
-        assert result.cross_references == []
+            assert result is basic_record
+            assert result.cross_references == []
 
 
 @pytest.mark.asyncio
-async def test_enrich_patent_skips_if_already_enriched(basic_record, mock_ddgs_results):
-    """Enrichment is already cached; verify enrich_patent doesn't call DDGS."""
+async def test_enrich_patent_skips_if_already_enriched(basic_record):
+    """Enrichment is already cached; verify enrich_patent doesn't call API handlers."""
     from core.enrichment import enrich_patent
 
     cached_refs = [
@@ -186,67 +207,84 @@ async def test_enrich_patent_skips_if_already_enriched(basic_record, mock_ddgs_r
         CrossReference(source="sec", url="https://sec.gov/filing/abc"),
     ]
 
-    with patch("core.enrichment.CacheDatabase") as mock_cache_cls, \
-         patch("core.enrichment.DDGS") as mock_ddgs:
+    with patch("core.enrichment.CacheDatabase") as mock_cache_cls:
         mock_db = MagicMock()
         mock_cache_cls.return_value = mock_db
-        # Cache returns data for this record
         mock_db.get_enrichment_cache.return_value = cached_refs
 
-        result = await enrich_patent(basic_record)
+        with (patch("core.enrichment._search_arxiv", new_callable=AsyncMock) as mock_a,
+              patch("core.enrichment._search_nsf", new_callable=AsyncMock) as mock_nsf,
+              patch("core.enrichment._search_doe", new_callable=AsyncMock) as mock_d,
+              patch("core.enrichment._search_nih", new_callable=AsyncMock) as mock_nih,
+              patch("core.enrichment._search_sec", new_callable=AsyncMock) as mock_s):
 
-        assert len(result.cross_references) == 2
-        assert result.cross_references[0].source == "nih"
-        assert result.cross_references[1].source == "sec"
-        # DDGS should never be called
-        mock_ddgs.assert_not_called()
+            result = await enrich_patent(basic_record)
+
+            assert len(result.cross_references) == 2
+            assert result.cross_references[0].source == "nih"
+            assert result.cross_references[1].source == "sec"
+            mock_a.assert_not_called()
+            mock_nsf.assert_not_called()
+            mock_d.assert_not_called()
+            mock_nih.assert_not_called()
+            mock_s.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_enrich_patent_uses_cache(tmp_path, basic_record, mock_ddgs_results):
-    """First call saves to cache; second call doesn't hit DDGS."""
+async def test_enrich_patent_uses_cache(tmp_path, basic_record, mock_cross_refs):
+    """First call saves to cache; second call doesn't hit API handlers."""
     from core.enrichment import enrich_patent
 
-    # Use a real temp database so caching actually works
     db_path = tmp_path / "test_enrich_cache.db"
 
-    with patch("core.enrichment.CacheDatabase") as mock_cache_cls, \
-         patch("core.enrichment.DDGS") as mock_ddgs:
-        # Use a real CacheDatabase instance pointed at the temp path
+    with patch("core.enrichment.CacheDatabase") as mock_cache_cls:
         real_db = CacheDatabase(db_path=str(db_path))
-        mock_cache_cls.return_value = real_db
         mock_db_spy = MagicMock(wraps=real_db)
         mock_cache_cls.return_value = mock_db_spy
 
-        # --- First call: cache miss → DDGS called ---
-        mock_ddgs.return_value.__enter__.return_value.text.return_value = mock_ddgs_results
+        with (patch("core.enrichment._search_arxiv", new_callable=AsyncMock) as mock_a,
+              patch("core.enrichment._search_nsf", new_callable=AsyncMock) as mock_nsf,
+              patch("core.enrichment._search_doe", new_callable=AsyncMock) as mock_d,
+              patch("core.enrichment._search_nih", new_callable=AsyncMock) as mock_nih,
+              patch("core.enrichment._search_sec", new_callable=AsyncMock) as mock_s):
+            mock_a.return_value = mock_cross_refs[0]
+            mock_nsf.return_value = mock_cross_refs[1]
+            mock_d.return_value = mock_cross_refs[2]
+            mock_nih.return_value = mock_cross_refs[3]
+            mock_s.return_value = mock_cross_refs[4]
 
-        record1 = PatentRecord(
-            id=basic_record.id, title=basic_record.title,
-            assignee=basic_record.assignee, dates=basic_record.dates,
-            abstract=basic_record.abstract, claims=[], image_urls=[],
-            status=basic_record.status, family_id=basic_record.family_id,
-        )
-        await enrich_patent(record1)
-        assert mock_ddgs.return_value.__enter__.return_value.text.call_count >= 1
+            # --- First call: cache miss -> APIs called ---
+            record1 = PatentRecord(
+                id=basic_record.id, title=basic_record.title,
+                assignee=basic_record.assignee, dates=basic_record.dates,
+                abstract=basic_record.abstract, claims=[], image_urls=[],
+                status=basic_record.status, family_id=basic_record.family_id,
+            )
+            await enrich_patent(record1)
+            assert mock_a.call_count >= 1
 
-        # Reset DDGS mock tracker for second call
-        mock_ddgs.reset_mock()
-        mock_ddgs.return_value.__enter__.return_value.text.reset_mock()
+            # Reset mocks
+            mock_a.reset_mock()
+            mock_nsf.reset_mock()
+            mock_d.reset_mock()
+            mock_nih.reset_mock()
+            mock_s.reset_mock()
 
-        # --- Second call: cache hit → DDGS NOT called ---
-        record2 = PatentRecord(
-            id=basic_record.id, title=basic_record.title,
-            assignee=basic_record.assignee, dates=basic_record.dates,
-            abstract=basic_record.abstract, claims=[], image_urls=[],
-            status=basic_record.status, family_id=basic_record.family_id,
-        )
-        result2 = await enrich_patent(record2)
+            # --- Second call: cache hit -> APIs NOT called ---
+            record2 = PatentRecord(
+                id=basic_record.id, title=basic_record.title,
+                assignee=basic_record.assignee, dates=basic_record.dates,
+                abstract=basic_record.abstract, claims=[], image_urls=[],
+                status=basic_record.status, family_id=basic_record.family_id,
+            )
+            result2 = await enrich_patent(record2)
 
-        # Should still have cross_references from cache
-        assert len(result2.cross_references) > 0
-        # DDGS should NOT have been called
-        mock_ddgs.return_value.__enter__.return_value.text.assert_not_called()
+            assert len(result2.cross_references) > 0
+            mock_a.assert_not_called()
+            mock_nsf.assert_not_called()
+            mock_d.assert_not_called()
+            mock_nih.assert_not_called()
+            mock_s.assert_not_called()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -288,21 +326,19 @@ async def test_search_all_does_not_enrich_synchronously():
         mock_g.return_value = []
         mock_p.return_value = []
 
-        # Patch enrich_patent at its definition site; search_all imports it at runtime
         with patch("core.enrichment.enrich_patent", new_callable=AsyncMock) as mock_enrich:
             mock_enrich.return_value = records[0]
 
             result = await search_all("test query", sources=["uspto", "epo", "wipo", "lens", "google", "patsnap"])
 
-            # All 10 records should be returned
             assert len(result) == 10
-            # enrich_patent should be called exactly 5 times (top 5)
-            assert mock_enrich.call_count == 5
+            # Enrichment is lazy (TUI-side), not called during search_all
+            assert mock_enrich.call_count == 0
 
 
 @pytest.mark.asyncio
 async def test_search_all_lazy_enrichment_doesnt_crash():
-    """Mock enrich_patent to raise Exception; verify search_all still returns all results (enrichment shouldn't even trigger)."""
+    """Mock enrich_patent to raise Exception; verify search_all still returns all results."""
     from core.search import search_all
     from core.models import PatentRecord
 
@@ -335,13 +371,11 @@ async def test_search_all_lazy_enrichment_doesnt_crash():
         mock_g.return_value = []
         mock_p.return_value = []
 
-        # enrich_patent raises an exception for all calls
         with patch("core.enrichment.enrich_patent", new_callable=AsyncMock) as mock_enrich:
             mock_enrich.side_effect = Exception("Enrichment failed")
 
             result = await search_all("test query", sources=["uspto", "epo", "wipo", "lens", "google", "patsnap"])
 
-            # All 5 records should still be returned despite enrichment failure
             assert len(result) == 5
             assert mock_enrich.call_count == 0
 
@@ -353,10 +387,6 @@ async def test_search_all_lazy_enrichment_doesnt_crash():
 @pytest.mark.asyncio
 async def test_enrich_current_skips_if_already_enriched():
     """Verify _enrich_current guard: skip when record already has cross_references."""
-    # The guard condition in SearchScreen._enrich_current is:
-    #   if record.cross_references: return
-    # This test verifies that enrich_patent is NOT called when the record
-    # already has cross_references, by testing the underlying enrichment flow.
     record = PatentRecord(
         id="US12345678B2", title="Test Patent", assignee="ACME Corp",
         dates={"filed": "2022-06-15"}, abstract="A battery.",
@@ -366,10 +396,9 @@ async def test_enrich_current_skips_if_already_enriched():
         ],
     )
 
-    # Direct verification: if cross_references is non-empty, enrich_patent should NOT be called
     with patch("core.enrichment.enrich_patent", new_callable=AsyncMock) as mock_enrich:
         if record.cross_references:
-            pass  # guard prevents enrichment
+            pass
         else:
             await mock_enrich(record)
         mock_enrich.assert_not_called()
@@ -380,23 +409,23 @@ async def test_enrich_current_skips_if_already_enriched():
 # ═══════════════════════════════════════════════════════════════
 
 def test_signal_domains_defined():
-    """Verify _SIGNAL_DOMAINS has all 4 expected keys."""
+    """Verify _SIGNAL_DOMAINS has all 5 expected keys."""
     from core.enrichment import _SIGNAL_DOMAINS
 
     assert isinstance(_SIGNAL_DOMAINS, dict)
-    assert set(_SIGNAL_DOMAINS.keys()) == {"nih", "sec", "arxiv", "opencorporates", "nsf", "doe"}
+    assert set(_SIGNAL_DOMAINS.keys()) == {"nih", "sec", "arxiv", "nsf", "doe"}
 
 
 def test_cross_reference_source_matches_category():
     """Verify that enriched cross_references have sources matching _SIGNAL_DOMAINS keys."""
     from core.enrichment import _SIGNAL_DOMAINS
 
-    # Build cross_references via enrichment logic (simulated)
     cross_refs = [
         CrossReference(source="nih", url="https://reporter.nih.gov/abc"),
         CrossReference(source="sec", url="https://sec.gov/xyz"),
         CrossReference(source="arxiv", url="https://arxiv.org/abs/1234"),
-        CrossReference(source="opencorporates", url="https://opencorporates.com/co/1"),
+        CrossReference(source="nsf", url="https://nsf.gov/award/1"),
+        CrossReference(source="doe", url="https://osti.gov/biblio/1"),
     ]
 
     valid_sources = set(_SIGNAL_DOMAINS.keys())

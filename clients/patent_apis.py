@@ -76,14 +76,6 @@ class WIPOClient(BaseAsyncClient):
         super().__init__(base_url="https://patentscope.wipo.int", timeout=30.0)
 
     async def search(self, query: str) -> List[PatentRecord]:
-        try:
-            from clients.scrapers import search_wipo_patents
-            records = await search_wipo_patents(query)
-            if records:
-                return records
-        except Exception as e:
-            print(f"ERR: Source [WIPO] scraper failed: {e}")
-
         print(f"INFO: Source [WIPO] using mock data for '{query}'.")
         return [
             PatentRecord(
@@ -261,21 +253,7 @@ class EPOClient(BaseAsyncClient):
         return records
 
     async def _search_epo_duckduckgo(self, query: str) -> List[PatentRecord]:
-        """Fallback: DuckDuckGo discovery + snippet scraping.
-
-        When the official OPS API is unavailable (no keys, auth failure,
-        rate limit, network error), use DDGS to find EPO register pages
-        and extract what we can from snippets. Falls back to mock data.
-        """
-        try:
-            from clients.scrapers import search_epo_patents
-
-            records = await search_epo_patents(query)
-            if records:
-                return records
-        except Exception as e:
-            print(f"ERR: Source [EPO] scraper failed: {e}")
-
+        """Fallback: mock data when API is unavailable."""
         print(f"INFO: Source [EPO] using mock data for '{query}'.")
         return [
             PatentRecord(
@@ -292,30 +270,16 @@ class EPOClient(BaseAsyncClient):
         ]
 
 class LensClient(BaseAsyncClient):
-    """Lens.org client using DuckDuckGo discovery + snippet scraping.
-
-    Lens.org's API requires a paid key and their patent pages are JS-rendered.
-    We bypass both with a free DDGS+BS4 scraper, falling back to mock data
-    when scraping fails.
-    """
+    """Lens.org client returning mock data (no free API available)."""
 
     def __init__(self):
         super().__init__(base_url="https://www.lens.org", timeout=30.0)
         self.config = load_config()
 
     async def validate_credentials(self) -> tuple[bool, str]:
-        # Lens scraper requires no credentials
-        return True, "Lens scraper (no credentials needed)."
+        return True, "Lens client (mock data)."
 
     async def search(self, query: str) -> List[PatentRecord]:
-        try:
-            from clients.scrapers import search_lens_patents
-            records = await search_lens_patents(query)
-            if records:
-                return records
-        except Exception as e:
-            print(f"ERR: Source [Lens] scraper failed: {e}")
-
         print(f"INFO: Source [Lens] using mock data for '{query}'.")
         return [
             PatentRecord(
@@ -471,14 +435,6 @@ class PatsnapClient(BaseAsyncClient):
 
 class GooglePatentsClient(BaseAsyncClient):
     async def search(self, query: str) -> List[PatentRecord]:
-        try:
-            from clients.scrapers import search_google_patents
-            records = await search_google_patents(query)
-            if records:
-                return records
-        except Exception as e:
-            print(f"ERR: Source [GooglePatents] scraper failed: {e}")
-
         print(f"INFO: Source [GooglePatents] using mock data for '{query}'.")
         return [
             PatentRecord(

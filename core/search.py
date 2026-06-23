@@ -4,7 +4,6 @@ import re
 from typing import List, Optional
 from core.models import PatentRecord
 from clients.patent_apis import USPTOClient, EPOClient, WIPOClient, LensClient, GooglePatentsClient, PatsnapClient
-from clients.circuit_breaker import CircuitOpenError
 from storage.cache import CacheDatabase
 
 logger = logging.getLogger("recon")
@@ -79,8 +78,6 @@ async def search_all(query: str, sources: Optional[List[str]] = None) -> List[Pa
         sources: List of source names to include (e.g. ["uspto", "epo"]).
                  Defaults to all sources if None.
     """
-    global _SAFE_MODE_ACTIVE
-
     query = sanitize_query(query)
 
     db = CacheDatabase()
@@ -108,28 +105,15 @@ async def search_all(query: str, sources: Optional[List[str]] = None) -> List[Pa
     results_nested = await asyncio.gather(*tasks, return_exceptions=True)
 
     all_records = []
-    circuit_triggered = False
     for res in results_nested:
         if isinstance(res, list):
             all_records.extend(res)
-        elif isinstance(res, CircuitOpenError):
-            circuit_triggered = True
-            logger.warning("Circuit breaker tripped during search", extra={"component": "search", "event": "circuit_open"})
-            print("WARN: Source unavailable (circuit breaker open). Falling back to cache.")
         elif isinstance(res, Exception):
             print(f"ERR: Search source failed: {res}")
 
     merged = sort_and_merge_results(all_records)
 
-    if circuit_triggered:
-        _SAFE_MODE_ACTIVE = True
-        stale = _get_stale_cache(db, query)
-        if stale:
-            merged = sort_and_merge_results(stale)
-            print("WARN: SAFE MODE — serving stale cached results. Live sources may be blocked.")
-            logger.warning("Safe mode activated — serving stale cache", extra={"component": "search", "event": "safe_mode"})
-
-    if merged and not circuit_triggered:
+    if merged:
         db.save_search_results(query, merged)
 
     return merged

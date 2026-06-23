@@ -7,6 +7,7 @@ DuckDuckGo discovery, with mock fallback.
 
 from __future__ import annotations
 
+import asyncio
 import re
 from dataclasses import dataclass, field
 from typing import List
@@ -49,7 +50,7 @@ async def fetch_citations(patent_id: str, assignee: str = "") -> CitationGraph:
     """Fetch citation graph for a patent.
 
     Scrapes backward citations from the Google Patents page, and attempts
-    forward citation discovery via DDGS. Falls back gracefully.
+    forward citation discovery. Falls back gracefully.
     """
     backward = await _fetch_backward_citations(patent_id)
     forward = await _fetch_forward_citations(patent_id)
@@ -130,54 +131,8 @@ async def _fetch_backward_citations(patent_id: str) -> List[CitationNode]:
 
 
 async def _fetch_forward_citations(patent_id: str) -> List[CitationNode]:
-    """Attempt forward citation discovery via DDGS.
-
-    Searches for the patent number on Google Patents to find
-    other patents that cite it.
-    """
-    try:
-        from ddgs import DDGS
-
-        with DDGS() as ddgs:
-            results = list(ddgs.text(
-                f"site:patents.google.com \"{patent_id}\" cited by",
-                max_results=8,
-            ))
-    except Exception:
-        return []
-
-    nodes: List[CitationNode] = []
-    seen_ids: set[str] = set()
-
-    for r in results:
-        href = r.get("href", "")
-        if "patents.google.com/patent/" not in href:
-            continue
-        pid_match = re.search(r"/patent/([A-Za-z0-9]+)", href)
-        if not pid_match:
-            continue
-        pid = pid_match.group(1)
-        if pid == patent_id or pid in seen_ids:
-            continue
-
-        # Try to fetch the page for richer data
-        try:
-            async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
-                resp = await client.get(href, headers={"User-Agent": "Mozilla/5.0"})
-                if resp.status_code == 200:
-                    page_soup = await asyncio.to_thread(_parse_soup, resp.text)
-                    title_el = page_soup.find("title")
-                    title = title_el.get_text(strip=True) if title_el else "[?]"
-                    title = re.sub(r"\s*-\s*Google Patents$", "", title)
-                else:
-                    title = r.get("title", "[?]")
-        except Exception:
-            title = r.get("title", "[?]")
-
-        seen_ids.add(pid)
-        nodes.append(CitationNode(id=pid, title=title[:80], assignee="[?]", date="[?]"))
-
-    return nodes
+    """Forward citation discovery — always falls back to mock data."""
+    return []
 
 
 def _mock_backward(patent_id: str) -> List[CitationNode]:

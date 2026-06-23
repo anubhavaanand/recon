@@ -1,9 +1,9 @@
-"""Cross-reference enrichment via native APIs and DuckDuckGo.
+"""Cross-reference enrichment via native research APIs.
 
-For each patent, searches intelligence sources (NIH, SEC, arXiv, OpenCorporates)
-to find evidence of grant funding, corporate filings, academic citations, and
-supply chain connections. These populate PatentRecord.cross_references which
-the scoring engine uses to calculate signal scores.
+For each patent, searches intelligence sources (arXiv, NSF, DOE, NIH, SEC)
+to find evidence of grant funding, academic citations, and corporate filings.
+These populate PatentRecord.cross_references which the scoring engine uses
+to calculate signal scores.
 """
 
 from __future__ import annotations
@@ -14,11 +14,18 @@ import xml.etree.ElementTree as ET
 from typing import Optional
 
 import httpx
-from ddgs import DDGS
 
 from core.models import PatentRecord, CrossReference
 from storage.cache import CacheDatabase
 
+
+_SIGNAL_DOMAINS: dict[str, str] = {
+    "nih": "NIH RePORTER (grants)",
+    "sec": "SEC EDGAR (filings)",
+    "arxiv": "arXiv (academic papers)",
+    "nsf": "NSF (grants)",
+    "doe": "DOE OSTI (research)",
+}
 
 _STOP_WORDS = frozenset({
     "a", "an", "the", "and", "or", "of", "in", "with", "for",
@@ -35,7 +42,7 @@ def _extract_date(text: str) -> Optional[str]:
 
 async def _search_arxiv(query: str) -> Optional[CrossReference]:
     try:
-        url = f'http://export.arxiv.org/api/query?search_query=all:"{query}"&max_results=1'
+        url = f'https://export.arxiv.org/api/query?search_query=all:"{query}"&max_results=1'
         async with httpx.AsyncClient(timeout=8.0) as client:
             resp = await client.get(url)
             if resp.status_code == 200:
@@ -79,7 +86,7 @@ async def _search_nsf(query: str) -> Optional[CrossReference]:
 
 async def _search_doe(query: str) -> Optional[CrossReference]:
     try:
-        url = f'https://www.osti.gov/api/v1/records?q="{query}"'
+        url = f'https://www.osti.gov/api/v1/records?all="{query}"'
         async with httpx.AsyncClient(timeout=8.0) as client:
             resp = await client.get(url)
             if resp.status_code == 200:
@@ -96,34 +103,10 @@ async def _search_doe(query: str) -> Optional[CrossReference]:
         pass
     return None
 
-async def _search_ddg_signal(source: str, domain_query: str, search_term: str) -> Optional[CrossReference]:
-    try:
-        from clients.scrapers import _ddg_search
-        import urllib.parse
-        results = await _ddg_search(f'{domain_query} "{search_term}"', max_results=1)
-        if results:
-            r = results[0]
-            snippet = r.get("body", "")
-            href = r.get("href", "")
-            if "duckduckgo.com/l/" in href and "uddg=" in href:
-                parsed = urllib.parse.urlparse(href)
-                qs = urllib.parse.parse_qs(parsed.query)
-                if "uddg" in qs:
-                    href = qs["uddg"][0]
-            return CrossReference(
-                source=source,
-                url=href,
-                date=_extract_date(snippet),
-                metadata={"title": r.get("title", ""), "snippet": snippet}
-            )
-    except Exception:
-        pass
-    return None
-
 async def _search_nih(query: str) -> Optional[CrossReference]:
     try:
         url = "https://api.reporter.nih.gov/v2/projects/search"
-        payload = {"criteria": {"advanced_text_search": {"operator": "and", "search_terms": [query]}}}
+        payload = {"criteria": {"advanced_text_search": {"operator": "and", "search_text": query}}}
         async with httpx.AsyncClient(timeout=8.0, headers={"User-Agent": "RECON/1.0"}) as client:
             resp = await client.post(url, json=payload)
             if resp.status_code == 200:
@@ -131,10 +114,12 @@ async def _search_nih(query: str) -> Optional[CrossReference]:
                 results = data.get("results", [])
                 if results:
                     proj = results[0]
+                    raw_date = proj.get("award_notice_date") or ""
+                    date = raw_date[:10] if raw_date else None
                     return CrossReference(
                         source="nih",
                         url=f"https://reporter.nih.gov/project-details/{proj.get('core_project_num')}",
-                        date=proj.get("award_notice_date", "")[:10],
+                        date=date,
                         metadata={"title": proj.get("project_title", ""), "snippet": proj.get("abstract_text", "")[:200]}
                     )
     except Exception:
