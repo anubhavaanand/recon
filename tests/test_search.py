@@ -126,3 +126,13 @@ def test_sanitize_strips_whitespace():
     from core.search import sanitize_query
     assert sanitize_query("  hello world  ") == "hello world"
     assert sanitize_query("") == ""
+
+
+def test_is_clean_url():
+    from clients.scrapers import is_clean_url
+    assert is_clean_url("https://patents.google.com/patent/US1000000B1/en", "patents.google.com") is True
+    assert is_clean_url("https://patentscope.wipo.int/search/en/detail.jsf", "patentscope.wipo.int") is True
+    assert is_clean_url("https://www.bing.com/ck/a?u=https://patents.google.com/patent/US1000000", "patents.google.com") is False
+    assert is_clean_url("https://duckduckgo.com/y.js?ad_domain=patents.google.com", "patents.google.com") is False
+    assert is_clean_url(None, "lens.org") is False
+    assert is_clean_url("", "lens.org") is False

@@ -28,8 +28,22 @@ from clients.base_scraper import BaseScraper, RateLimitedError, SourceDisabledEr
 from clients.circuit_breaker import CircuitBreaker, CircuitOpenError
 from core.models import PatentRecord
 from core.search import sanitize_query
+from urllib.parse import urlparse
 
 logger = logging.getLogger("recon")
+
+
+def is_clean_url(url: str, target_domain: str) -> bool:
+    if not url:
+        return False
+    # Exclude known tracking/ad redirect domains
+    if any(domain in url for domain in ["bing.com", "duckduckgo.com", "doubleclick.net", "googleadservices.com"]):
+        return False
+    try:
+        parsed = urlparse(url)
+        return parsed.netloc and target_domain in parsed.netloc
+    except Exception:
+        return False
 
 
 _ddg_breaker = CircuitBreaker(name="duckduckgo", threshold=3, reset_timeout=60)
@@ -70,7 +84,7 @@ class GooglePatentsScraper(BaseScraper):
         urls = []
         for r in results:
             href = r.get("href", "")
-            if "patents.google.com/patent/" in href:
+            if is_clean_url(href, "patents.google.com") and "patents.google.com/patent/" in href:
                 urls.append(href)
 
         return await _fetch_patents_from_urls(urls, parse_google_patent_html, breaker=self._breaker)
@@ -109,7 +123,7 @@ class WIPOScraper(BaseScraper):
         patent_urls = []
         for r in results:
             href = r.get("href", "")
-            if "patentscope.wipo.int" not in href:
+            if not is_clean_url(href, "patentscope.wipo.int"):
                 continue
             title_lower = (r.get("title") or "").lower()
             if any(kw in title_lower for kw in ["passkey", "sign in", "log in", "register", "create account"]):
@@ -125,7 +139,7 @@ class WIPOScraper(BaseScraper):
 
         for r in results:
             href = r.get("href", "")
-            if "patentscope.wipo.int" not in href:
+            if not is_clean_url(href, "patentscope.wipo.int"):
                 continue
 
             title_lower = (r.get("title") or "").lower()
@@ -216,6 +230,8 @@ class LensScraper(BaseScraper):
 
         for r in results:
             href = r.get("href", "")
+            if not is_clean_url(href, "lens.org"):
+                continue
             if "lens.org/lens/patent/" not in href:
                 continue
 
@@ -303,7 +319,7 @@ class EPOScraper(BaseScraper):
 
         for r in results:
             href = r.get("href", "")
-            if "register.epo.org" not in href:
+            if not is_clean_url(href, "register.epo.org"):
                 continue
 
             title_raw = r.get("title", "")
