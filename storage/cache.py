@@ -224,7 +224,9 @@ def _normalize_patent_id(patent_id: str) -> str:
 
 
 class CacheDatabase:
-    def __init__(self, db_path: str = "recon_cache.db"):
+    def __init__(self, db_path: str | None = None):
+        if db_path is None:
+            db_path = str(Path.home() / ".cache" / "recon" / "cache.db")
         self.db_path = str(db_path)
         self._init_db()
         self.enforce_eviction_policy()
