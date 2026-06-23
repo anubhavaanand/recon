@@ -158,3 +158,31 @@ async def test_theme_validation():
         
         assert "theme-arctic-frost" in pilot.app.screen.classes
         assert search_input.value == ""
+
+
+@pytest.mark.asyncio
+async def test_assignee_view_toggle():
+    """a key toggles the assignee portfolio view overlay and builds it with correct width."""
+    from tui.app import ReconApp
+    from tui.screens import SearchScreen
+    async with ReconApp().run_test(size=(140, 40)) as pilot:
+        await pilot.app.switch_screen(SearchScreen())
+        await pilot.pause(0.5)
+        
+        pilot.app.screen.query_one("#search_input").blur()
+        await pilot.pause(0.1)
+        
+        screen = pilot.app.screen
+        overlay = screen.query_one("#assignee_overlay", Static)
+        assert "hidden" in overlay.classes
+        
+        await pilot.press("a")
+        await pilot.pause(0.5)
+        assert "hidden" not in overlay.classes
+        
+        content_lines = str(overlay.content).splitlines()
+        assert len(content_lines[0]) == len(content_lines[1])
+        
+        await pilot.press("a")
+        await pilot.pause(0.5)
+        assert "hidden" in overlay.classes

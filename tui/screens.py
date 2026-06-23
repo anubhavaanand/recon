@@ -1395,7 +1395,7 @@ class SearchScreen(Screen):
         sorted_assignees = sorted(assignees.items(), key=lambda x: -x[1])
 
         lines = [
-            "┌─ Assignee Portfolio View ──────────────────┐",
+            "┌─ Assignee Portfolio View ───────────────────┐",
             "│                                             │",
         ]
         for name, count in sorted_assignees[:15]:
