@@ -121,8 +121,16 @@ async def search_all(query: str, sources: Optional[List[str]] = None) -> List[Pa
     if not clients:
         return []
 
-    tasks = [client.search(query) for client in clients]
+    async def _search_with_timeout(client):
+        try:
+            return await asyncio.wait_for(client.search(query), timeout=15.0)
+        except asyncio.TimeoutError:
+            logger.error(f"Search source {client.__class__.__name__} timed out after 15s")
+            raise TimeoutError(f"ERR: {client.__class__.__name__} search timed out after 15s. Check network or try again.")
+
+    tasks = [_search_with_timeout(client) for client in clients]
     results_nested = await asyncio.gather(*tasks, return_exceptions=True)
+
 
     all_records = []
     errors = 0

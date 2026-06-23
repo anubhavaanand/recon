@@ -178,3 +178,26 @@ async def test_lens_id_resolution(monkeypatch):
     assert record is not None
     assert record.id == "US11000000B2"
     assert record.title == "Resolved Patent"
+
+
+@pytest.mark.asyncio
+async def test_search_all_partial_timeout(monkeypatch):
+    from core.search import search_all
+    from clients.patent_apis import USPTOClient, EPOClient
+    
+    async def mock_search_hang(*args, **kwargs):
+        import asyncio
+        raise asyncio.TimeoutError()
+        
+    async def mock_search_ok(*args, **kwargs):
+        return [_make_record("EPO123", "2023-01-01")]
+        
+    monkeypatch.setattr(USPTOClient, "search", mock_search_hang)
+    monkeypatch.setattr(EPOClient, "search", mock_search_ok)
+    monkeypatch.setattr("storage.cache.CacheDatabase.get_cached_search", lambda self, q: None)
+    monkeypatch.setattr("storage.cache.CacheDatabase.save_search_results", lambda *args, **kwargs: None)
+    
+    results = await search_all("test query", sources=["uspto", "epo"])
+    assert len(results) == 1
+    assert results[0].id == "EPO123"
+

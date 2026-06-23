@@ -81,7 +81,7 @@ class BaseScraper(ABC):
         """Fetch a single patent by ID. Subclasses must implement."""
 
     async def _rate_limited_request(
-        self, url: str, *, source: str = "", is_ddg: bool = False
+        self, url: str, *, source: str = "", is_ddg: bool = False, timeout: float = 15.0
     ) -> httpx.Response:
         """Make a rate-limited HTTP GET with rotating UA, jitter, and CB."""
         if self._disabled:
@@ -97,10 +97,10 @@ class BaseScraper(ABC):
         if is_ddg:
             async with _DDG_SEMAPHORE:
                 await asyncio.sleep(random.uniform(1.0, 3.0))
-                response = await client.get(url, headers=headers, follow_redirects=True)
+                response = await client.get(url, headers=headers, follow_redirects=True, timeout=timeout)
         else:
             await asyncio.sleep(random.uniform(1.0, 3.0))
-            response = await client.get(url, headers=headers, follow_redirects=True)
+            response = await client.get(url, headers=headers, follow_redirects=True, timeout=timeout)
 
         if response.status_code == 429:
             self._failure_count += 1
@@ -117,10 +117,11 @@ class BaseScraper(ABC):
     ) -> Optional[str]:
         """Fetch HTML with resilience. Returns None on failure."""
         try:
-            resp = await self._rate_limited_request(url, source=self.source_name, is_ddg=is_ddg)
+            resp = await self._rate_limited_request(url, source=self.source_name, is_ddg=is_ddg, timeout=timeout)
             return resp.text
         except (RateLimitedError, SourceDisabledError, httpx.HTTPError):
             return None
+
 
     def reset_circuit_breaker(self) -> None:
         """Reset the per-source circuit breaker (e.g., on new search)."""

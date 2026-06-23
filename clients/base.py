@@ -66,13 +66,13 @@ class BaseAsyncClient:
         full_url = self.base_url + url if url.startswith("/") else url
 
         if not self.respect_retry_after:
-            response = await client.get(full_url, params=params, headers=headers)
+            response = await client.get(full_url, params=params, headers=headers, timeout=self.timeout)
             response.raise_for_status()
             return response
 
         backoff_delays = [1, 2, 4, 8]
         for attempt in range(max_retries + 1):
-            response = await client.get(full_url, params=params, headers=headers)
+            response = await client.get(full_url, params=params, headers=headers, timeout=self.timeout)
 
             if response.status_code in (429, 503, 504):
                 if attempt < max_retries:
@@ -86,6 +86,7 @@ class BaseAsyncClient:
             return response
 
         return response
+
 
     async def aclose(self) -> None:
         """Close the shared async HTTP client."""
