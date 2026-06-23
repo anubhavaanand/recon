@@ -115,7 +115,7 @@ def test_save_and_get_enrichment_cache(tmp_path):
 
 @pytest.mark.asyncio
 async def test_enrich_patent_adds_cross_references(basic_record, mock_cross_refs):
-    """Mock all 5 API handlers to return results; verify record gets 5 cross_references."""
+    """Mock all 7 API handlers to return results; verify record gets 7 cross_references."""
     from core.enrichment import enrich_patent
 
     with patch("core.enrichment.CacheDatabase") as mock_cache_cls:
@@ -127,18 +127,22 @@ async def test_enrich_patent_adds_cross_references(basic_record, mock_cross_refs
               patch("core.enrichment._search_nsf", new_callable=AsyncMock) as mock_nsf,
               patch("core.enrichment._search_doe", new_callable=AsyncMock) as mock_d,
               patch("core.enrichment._search_nih", new_callable=AsyncMock) as mock_nih,
-              patch("core.enrichment._search_sec", new_callable=AsyncMock) as mock_s):
+              patch("core.enrichment._search_sec", new_callable=AsyncMock) as mock_s,
+              patch("core.enrichment._search_openalex", new_callable=AsyncMock) as mock_oa,
+              patch("core.enrichment._search_crossref", new_callable=AsyncMock) as mock_cr):
             mock_a.return_value = mock_cross_refs[0]
             mock_nsf.return_value = mock_cross_refs[1]
             mock_d.return_value = mock_cross_refs[2]
             mock_nih.return_value = mock_cross_refs[3]
             mock_s.return_value = mock_cross_refs[4]
+            mock_oa.return_value = CrossReference(source="openalex", url="https://openalex.org")
+            mock_cr.return_value = CrossReference(source="crossref", url="https://crossref.org")
 
             result = await enrich_patent(basic_record)
 
-            assert len(result.cross_references) == 5
+            assert len(result.cross_references) == 7
             sources = {cr.source for cr in result.cross_references}
-            assert sources == {"arxiv", "nsf", "doe", "nih", "sec"}
+            assert sources == {"arxiv", "nsf", "doe", "nih", "sec", "openalex", "crossref"}
             for cr in result.cross_references:
                 assert cr.url is not None
             mock_db.save_enrichment_cache.assert_called_once()
@@ -158,16 +162,20 @@ async def test_enrich_patent_handles_empty_assignee(record_empty_assignee, mock_
               patch("core.enrichment._search_nsf", new_callable=AsyncMock) as mock_nsf,
               patch("core.enrichment._search_doe", new_callable=AsyncMock) as mock_d,
               patch("core.enrichment._search_nih", new_callable=AsyncMock) as mock_nih,
-              patch("core.enrichment._search_sec", new_callable=AsyncMock) as mock_s):
+              patch("core.enrichment._search_sec", new_callable=AsyncMock) as mock_s,
+              patch("core.enrichment._search_openalex", new_callable=AsyncMock) as mock_oa,
+              patch("core.enrichment._search_crossref", new_callable=AsyncMock) as mock_cr):
             mock_a.return_value = mock_cross_refs[0]
             mock_nsf.return_value = mock_cross_refs[1]
             mock_d.return_value = mock_cross_refs[2]
             mock_nih.return_value = mock_cross_refs[3]
             mock_s.return_value = mock_cross_refs[4]
+            mock_oa.return_value = CrossReference(source="openalex", url="https://openalex.org")
+            mock_cr.return_value = CrossReference(source="crossref", url="https://crossref.org")
 
             result = await enrich_patent(record_empty_assignee)
 
-            assert len(result.cross_references) == 5
+            assert len(result.cross_references) == 7
             # Verify that the query used title words (assignee was "[?]")
             mock_a.assert_called_once()
             query_arg = mock_a.call_args[0][0]
@@ -188,7 +196,9 @@ async def test_enrich_patent_graceful_timeout(basic_record):
               patch("core.enrichment._search_nsf", new_callable=AsyncMock),
               patch("core.enrichment._search_doe", new_callable=AsyncMock),
               patch("core.enrichment._search_nih", new_callable=AsyncMock),
-              patch("core.enrichment._search_sec", new_callable=AsyncMock)):
+              patch("core.enrichment._search_sec", new_callable=AsyncMock),
+              patch("core.enrichment._search_openalex", new_callable=AsyncMock),
+              patch("core.enrichment._search_crossref", new_callable=AsyncMock)):
             mock_a.return_value = None
 
             result = await enrich_patent(basic_record)
@@ -409,11 +419,11 @@ async def test_enrich_current_skips_if_already_enriched():
 # ═══════════════════════════════════════════════════════════════
 
 def test_signal_domains_defined():
-    """Verify _SIGNAL_DOMAINS has all 5 expected keys."""
+    """Verify _SIGNAL_DOMAINS has all 7 expected keys."""
     from core.enrichment import _SIGNAL_DOMAINS
 
     assert isinstance(_SIGNAL_DOMAINS, dict)
-    assert set(_SIGNAL_DOMAINS.keys()) == {"nih", "sec", "arxiv", "nsf", "doe"}
+    assert set(_SIGNAL_DOMAINS.keys()) == {"nih", "sec", "arxiv", "nsf", "doe", "openalex", "crossref"}
 
 
 def test_cross_reference_source_matches_category():
@@ -426,6 +436,8 @@ def test_cross_reference_source_matches_category():
         CrossReference(source="arxiv", url="https://arxiv.org/abs/1234"),
         CrossReference(source="nsf", url="https://nsf.gov/award/1"),
         CrossReference(source="doe", url="https://osti.gov/biblio/1"),
+        CrossReference(source="openalex", url="https://openalex.org/W1"),
+        CrossReference(source="crossref", url="https://doi.org/10"),
     ]
 
     valid_sources = set(_SIGNAL_DOMAINS.keys())

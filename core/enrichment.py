@@ -25,6 +25,8 @@ _SIGNAL_DOMAINS: dict[str, str] = {
     "arxiv": "arXiv (academic papers)",
     "nsf": "NSF (grants)",
     "doe": "DOE OSTI (research)",
+    "openalex": "OpenAlex (publications)",
+    "crossref": "Crossref (citations)",
 }
 
 _STOP_WORDS = frozenset({
@@ -154,6 +156,48 @@ async def _search_sec(query: str) -> Optional[CrossReference]:
         pass
     return None
 
+async def _search_openalex(query: str) -> Optional[CrossReference]:
+    try:
+        url = f"https://api.openalex.org/works?search={query}&per_page=1&mailto=recon@example.com"
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(url)
+            if resp.status_code == 200:
+                data = resp.json()
+                results = data.get("results", [])
+                if results:
+                    work = results[0]
+                    return CrossReference(
+                        source="openalex",
+                        url=work.get("doi") or work.get("id", ""),
+                        date=work.get("publication_date", ""),
+                        metadata={"title": work.get("title", ""), "snippet": ""}
+                    )
+    except Exception:
+        pass
+    return None
+
+async def _search_crossref(query: str) -> Optional[CrossReference]:
+    try:
+        url = f"https://api.crossref.org/works?query={query}&select=DOI,title,author,created&rows=1&mailto=recon@example.com"
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(url)
+            if resp.status_code == 200:
+                data = resp.json()
+                items = data.get("message", {}).get("items", [])
+                if items:
+                    item = items[0]
+                    doi = item.get("DOI", "")
+                    title = item.get("title", [""])[0] if item.get("title") else ""
+                    return CrossReference(
+                        source="crossref",
+                        url=f"https://doi.org/{doi}" if doi else "",
+                        date="",  # Crossref dates are nested arrays, skipping for brevity
+                        metadata={"title": title, "snippet": ""}
+                    )
+    except Exception:
+        pass
+    return None
+
 def _build_search_query(record: PatentRecord) -> Optional[str]:
     assignee = record.assignee
     if assignee and assignee not in ("[?]", "UNKNOWN", ""):
@@ -185,6 +229,8 @@ async def enrich_patent(record: PatentRecord) -> PatentRecord:
             _search_doe(query),
             _search_nih(query),
             _search_sec(query),
+            _search_openalex(query),
+            _search_crossref(query),
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
