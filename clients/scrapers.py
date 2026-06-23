@@ -548,9 +548,14 @@ async def search_epo_patents(query: str) -> List[PatentRecord]:
                                 applicant_el = sibling
                             break
                 if applicant_el:
-                    a = applicant_el.get_text(separator=" ", strip=True)
-                    if a:
-                        rec.assignee = a
+                    a_text = applicant_el.get_text(separator=" ", strip=True)
+                    # Clean up common EPO boilerplate
+                    a_text = re.sub(r"(?i)for all designated states\s*", "", a_text)
+                    # Often the company name is before an address, let's just take the first part
+                    parts = re.split(r",|\d", a_text)
+                    clean_assignee = parts[0].strip()
+                    if clean_assignee:
+                        rec.assignee = clean_assignee
 
                 # Abstract
                 abstract_el = soup.select_one(".abstract, [id*='abstract'], .patent-abstract")

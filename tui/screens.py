@@ -864,8 +864,10 @@ class SearchScreen(Screen):
 
             if record.cross_references:
                 self.notify(f"Enrichment: {len(record.cross_references)} signals found", timeout=2.0)
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger("recon").error(f"Enrichment error: {e}", exc_info=True)
+            self.notify(f"Enrichment error: {e}", severity="error")
 
     async def _lazy_load_claims(self, record) -> None:
         await self.query_one(ClaimsTab).load_claims(record)

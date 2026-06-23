@@ -123,17 +123,21 @@ async def _search_ddg_signal(source: str, domain_query: str, search_term: str) -
 def _build_search_query(record: PatentRecord) -> Optional[str]:
     assignee = record.assignee
     if assignee and assignee not in ("[?]", "UNKNOWN", ""):
-        return assignee
+        # If the assignee string is too long, it's probably garbage/boilerplate
+        if len(assignee) < 30:
+            return assignee
+
+    # Fall back to title words
     words = [w for w in record.title.split() if w.lower() not in _STOP_WORDS]
     if words:
-        return " ".join(words[:5])
+        return " ".join(words[:4])
     return None
 
 async def enrich_patent(record: PatentRecord) -> PatentRecord:
     try:
         db = CacheDatabase()
         cached = db.get_enrichment_cache(record.id)
-        if cached is not None:
+        if cached: # only return if there are actual items
             record.cross_references = cached
             return record
 
