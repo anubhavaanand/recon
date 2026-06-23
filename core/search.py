@@ -88,16 +88,11 @@ async def search_all(query: str, sources: Optional[List[str]] = None) -> List[Pa
     if cached:
         return sort_and_merge_results(cached)
 
-    from clients.patentsview import search_patentsview
-    tasks = []
+    if sources is None:
+        sources = ALL_SOURCES
 
-    if sources is None or "uspto" in sources:
-        tasks.append(search_patentsview(query))
-
-    other_sources = [s for s in (sources or ALL_SOURCES) if s != "uspto"]
     clients = []
-
-    for src in other_sources:
+    for src in sources:
         src_lower = src.strip().lower()
         entry = SOURCE_REGISTRY.get(src_lower)
         if entry is None:
@@ -106,12 +101,10 @@ async def search_all(query: str, sources: Optional[List[str]] = None) -> List[Pa
         _, cls = entry
         clients.append(cls())
 
-    for client in clients:
-        tasks.append(client.search(query))
-
-    if not tasks:
+    if not clients:
         return []
 
+    tasks = [client.search(query) for client in clients]
     results_nested = await asyncio.gather(*tasks, return_exceptions=True)
 
     all_records = []
