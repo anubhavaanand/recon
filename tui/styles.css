@@ -15,7 +15,13 @@ $secondary: #bb9af7;
 Screen {
     background: $bg;
     color: $text;
+    layers: default overlay notification;
 }
+
+ToastRack {
+    layer: notification;
+}
+
 
 /* ── Status bar (top + bottom static) ── */
 #status_top {
