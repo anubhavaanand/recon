@@ -16,7 +16,7 @@ def test_cache_init(tmp_path):
     assert "citations" in tables
     assert "search_history" in tables
     assert "cache_health" in tables
-    assert "scraper_metadata" in tables
+    assert "api_metadata" in tables
     assert "export_log" in tables
     assert "terminal_sessions" in tables
     conn.close()

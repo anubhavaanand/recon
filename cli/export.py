@@ -9,13 +9,18 @@ import fpdf
 def validate_export_path(output_path: str) -> str:
     """Validate export path to prevent directory traversal.
 
-    Checks for null bytes and resolves the path. Raises ValueError if the
-    path contains dangerous patterns.
+    Checks for null bytes and '..' traversal components. Raises ValueError
+    if the path is dangerous. Resolves to absolute path on success.
     """
     if "\0" in output_path:
         raise ValueError(f"Invalid export path: null byte detected in '{output_path}'")
 
     p = Path(output_path)
+    if ".." in p.parts:
+        raise ValueError(
+            f"ERR: Directory traversal detected in path: {output_path}"
+        )
+
     try:
         resolved = p.resolve()
     except (OSError, RuntimeError):

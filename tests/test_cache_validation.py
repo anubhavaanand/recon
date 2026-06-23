@@ -176,7 +176,7 @@ def test_cache_schema_validation(cache):
         "citations",
         "collections",
         "export_log",
-        "scraper_metadata",
+        "api_metadata",
         "search_history",
         "search_results",
         "terminal_sessions",
@@ -215,12 +215,8 @@ def test_cache_schema_validation(cache):
     indexes = cursor.fetchall()
     assert len(indexes) > 0, "collections table should have indexes"
 
-    cursor.execute(
-        "SELECT name FROM sqlite_master WHERE type='virtual_table' OR (type='table' AND name LIKE '%_fts%')"
-    )
-    fts_tables = [r[0] for r in cursor.fetchall()]
-    fts_found = any("fts" in t for t in fts_tables)
-    assert fts_found, "FTS5 virtual table for tags should exist"
+    cursor.execute("SELECT name FROM sqlite_master WHERE name = ?", ("idx_collections_tags",))
+    assert cursor.fetchone(), "FTS5 virtual table idx_collections_tags should exist"
 
     conn.close()
 

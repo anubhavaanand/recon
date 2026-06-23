@@ -636,6 +636,7 @@ class SearchScreen(Screen):
         self._sort_selected = 0
         self._sort_mode = "relevance"
         self._semantic_enabled = False
+        self._awaiting_nomic_consent = False
 
     def compose(self) -> ComposeResult:
         # Top status bar
@@ -661,6 +662,8 @@ class SearchScreen(Screen):
         yield Static("", id="source_filter_overlay", classes="hidden")
         # Sort overlay (hidden by default)
         yield Static("", id="sort_overlay", classes="hidden")
+        # Nomic consent overlay (hidden by default)
+        yield Static("", id="nomic_consent_overlay", classes="hidden")
         # Assignee Portfolio View overlay (hidden by default)
         yield Static("", id="assignee_overlay", classes="hidden")
         # Bottom status bar
@@ -704,7 +707,28 @@ class SearchScreen(Screen):
                 pass
 
     def on_key(self, event) -> None:
-        # Command palette takes priority when active
+        # Nomic consent response takes top priority
+        if getattr(self, "_awaiting_nomic_consent", False):
+            from core.config import load_config, save_config
+            key = event.key
+            overlay = self.query_one("#nomic_consent_overlay", Static)
+            event.stop()
+            event.prevent_default()
+            self._awaiting_nomic_consent = False
+            overlay.add_class("hidden")
+            overlay.update("")
+            if key.lower() == "y":
+                cfg = load_config()
+                self.app.notify("Downloading nomic-embed-text (270MB)... This may take a few minutes.")
+                self._do_pull_nomic(cfg)
+            else:
+                cfg = load_config()
+                cfg.nomic_consent_given = True
+                save_config(cfg)
+                self.app.notify("Semantic Search disabled.")
+            return
+
+        # Command palette takes priority
         palette = self.query_one("#command_palette", CommandPalette)
         if palette.is_active:
             handled = self._on_key_command_palette(event)
@@ -749,6 +773,9 @@ class SearchScreen(Screen):
     def on_mount(self) -> None:
         self._set_active_tab("info")
         self.query_one("#search_input", Input).focus()
+        from core.config import load_config
+        cfg = load_config()
+        self._semantic_enabled = cfg.semantic_search_enabled
 
     def on_input_changed(self, event: Input.Changed) -> None:
         value = event.value
@@ -815,6 +842,14 @@ class SearchScreen(Screen):
         import asyncio
         await asyncio.sleep(0.01) # Yield to event loop to guarantee the "Searching..." text renders
         self._results = await search_all(query, sources=sources)
+
+        if self._semantic_enabled and self._results:
+            from core.search import semantic_search
+            sem_results = await semantic_search(query, top_k=20)
+            if sem_results:
+                seen = {r.id for r in sem_results}
+                rest = [r for r in self._results if r.id not in seen]
+                self._results = sem_results + rest[:30]
         
         result_list = self.query_one(ResultList)
         result_list.clear()
@@ -1212,17 +1247,62 @@ class SearchScreen(Screen):
             result_list.focus()
 
     def action_toggle_semantic(self) -> None:
+        from core.ai import AIProvider
+        from core.config import load_config, save_config
+
+        cfg = load_config()
+
+        if not AIProvider.nomic_is_installed():
+            if cfg.nomic_consent_given:
+                self.app.notify("Semantic Search unavailable: nomic-embed-text not found. Run 'ollama pull nomic-embed-text'", severity="error")
+                return
+            self._prompt_nomic_consent()
+            return
+
         self._semantic_enabled = not self._semantic_enabled
+        cfg.semantic_search_enabled = self._semantic_enabled
+        save_config(cfg)
         state = "enabled" if self._semantic_enabled else "disabled"
         self.app.notify(f"Semantic Search {state}")
-        
-        # update top bar
+
         top = self.query_one("#status_top", Static)
         text = str(top.renderable)
         if self._semantic_enabled and "[Semantic]" not in text:
             top.update(text.replace("results", "results  │  [Semantic]"))
         elif not self._semantic_enabled and "[Semantic]" in text:
             top.update(text.replace("  │  [Semantic]", ""))
+
+    def _prompt_nomic_consent(self) -> None:
+        """Show inline consent prompt for nomic-embed-text download (no ModalScreen)."""
+        from core.config import load_config, save_config
+
+        overlay = self.query_one("#nomic_consent_overlay", Static)
+        overlay.remove_class("hidden")
+        overlay.update(
+            "[?] Download nomic-embed-text (270MB) for local semantic search? [y/N]: "
+        )
+        self._awaiting_nomic_consent = True
+
+    @work(exclusive=True, thread=True)
+    def _do_pull_nomic(self, cfg) -> None:
+        """Pull nomic model in background thread, then re-toggle semantic."""
+        import asyncio
+        from core.ai import AIProvider
+        from core.config import save_config
+
+        async def _pull():
+            ok = await AIProvider.pull_nomic()
+            return ok
+
+        ok = asyncio.run(_pull())
+        if ok:
+            cfg.nomic_consent_given = True
+            cfg.semantic_search_enabled = True
+            save_config(cfg)
+            self.app.call_from_thread(lambda: self.app.notify("nomic-embed-text ready. Semantic Search enabled."))
+            self._semantic_enabled = True
+        else:
+            self.app.call_from_thread(lambda: self.app.notify("ERR: Failed to download nomic-embed-text. Check Ollama is running.", severity="error"))
 
     # ── Overlay dismissal ─────────────────────────────
 

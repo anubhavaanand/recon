@@ -165,6 +165,21 @@ ResultListItem.--highlight {
     display: none;
 }
 
+/* ── Nomic consent overlay ── */
+#nomic_consent_overlay {
+    width: 56;
+    height: auto;
+    background: $surface;
+    color: $secondary;
+    border: round $primary;
+    offset: 30 4;
+    padding: 0 1;
+    layer: overlay;
+}
+#nomic_consent_overlay.hidden {
+    display: none;
+}
+
 /* ── Assignee Portfolio View overlay ── */
 #assignee_overlay {
     width: 48;

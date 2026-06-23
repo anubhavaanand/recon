@@ -11,21 +11,22 @@ logger = logging.getLogger("recon")
 _SHELL_CHARS_RE = re.compile(r'[;|&$`(){}\[\]<>#~!\\]')
 _CQL_WILDCARD_ALL_RE = re.compile(r'\*:\*')
 _MULTI_SPACE_RE = re.compile(r' {2,}')
+_CONTROL_CHARS_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
 
 
 def sanitize_query(query: str) -> str:
     """
     Sanitize a user query before passing to external services.
 
-    Removes shell metacharacters and CQL injection patterns to prevent
-    command injection and search-engine query injection. Preserves
-    alphanumerics, spaces, quotes, hyphens, colons, slashes, and periods
-    needed for patent search syntax.
+    Removes shell metacharacters, null bytes, control characters, and CQL
+    injection patterns. Truncates to 500 characters max.
     """
+    query = query.replace("\0", "")
+    query = _CONTROL_CHARS_RE.sub("", query)
     query = _SHELL_CHARS_RE.sub("", query)
     query = _CQL_WILDCARD_ALL_RE.sub("", query)
     query = _MULTI_SPACE_RE.sub(" ", query)
-    query = query.strip()
+    query = query.strip()[:500]
     return query
 
 def _check_circuit_breakers(sources: list[str]) -> bool:
@@ -144,6 +145,54 @@ async def search_all(query: str, sources: Optional[List[str]] = None) -> List[Pa
         db.save_search_results(query, merged)
 
     return merged
+
+
+async def semantic_search(query: str, top_k: int = 20) -> list[PatentRecord]:
+    """Rerank search results by cosine similarity against stored embeddings.
+
+    Embeds query via nomic-embed-text, computes similarity against all cached
+    patent embeddings, returns top_k results. Returns empty list on failure.
+    """
+    from core.ai import AIProvider, cosine_similarity
+
+    ai = AIProvider()
+    query_emb = await ai.generate_embedding(query)
+    if not query_emb:
+        return []
+
+    db = CacheDatabase()
+    all_embs = db.get_all_embeddings()
+    if not all_embs:
+        return []
+
+    scored: list[tuple[str, float]] = []
+    for pid, emb in all_embs.items():
+        sim = cosine_similarity(query_emb, emb)
+        if sim > 0.0:
+            scored.append((pid, sim))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+    top_pids = {pid for pid, _ in scored[:top_k]}
+
+    with db.get_connection() as conn:
+        rows = conn.execute(
+            "SELECT patent_json FROM collections WHERE patent_id IN ({}) ORDER BY saved_at DESC".format(
+                ",".join("?" for _ in top_pids)
+            ),
+            list(top_pids),
+        ).fetchall()
+
+    from core.models import CrossReference
+    records = []
+    for row in rows:
+        data = json.loads(row["patent_json"])
+        if "cross_references" in data:
+            data["cross_references"] = [CrossReference(**cr) for cr in data["cross_references"]]
+        records.append(PatentRecord(**data))
+
+    pid_order = {pid: i for i, pid in enumerate(top_pids)}
+    records.sort(key=lambda r: pid_order.get(r.id or "", 999))
+    return records
 
 
 def _get_stale_cache(db: CacheDatabase, query: str) -> Optional[List[PatentRecord]]:

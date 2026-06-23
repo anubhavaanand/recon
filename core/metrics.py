@@ -2,12 +2,13 @@ import logging
 import json
 import os
 import time
+import uuid
 from dataclasses import dataclass, asdict
 from logging.handlers import RotatingFileHandler
 from typing import Optional, Dict, List
 from enum import Enum
 
-SESSION_ID = ""
+SESSION_ID = uuid.uuid4().hex[:8]
 VERSION = "0.2.0"
 
 
@@ -36,7 +37,7 @@ class JSONFormatter(logging.Formatter):
 
 
 def setup_logging(debug: bool = False) -> logging.Logger:
-    log_dir = os.path.expanduser("~/.local/share/recon/logs")
+    log_dir = os.path.expanduser("~/.cache/recon")
     os.makedirs(log_dir, exist_ok=True)
     log_path = os.path.join(log_dir, "recon.debug.log" if debug else "recon.log")
     max_bytes = 50 * 1024 * 1024 if debug else 10 * 1024 * 1024
@@ -78,6 +79,7 @@ class MetricSnapshot:
     memory_mb: Optional[float]
     api_error_rate: float
     rate_limit_proximity: Dict[str, float]
+    event_loop_blocked_ms: float
     active_alerts: List[Dict]
 
 
@@ -91,6 +93,8 @@ class MetricsCollector:
         self.cache_misses = 0
         self.api_calls: Dict[str, Dict] = {}
         self.latencies: List[float] = []
+        self._last_block_check = time.monotonic()
+        self._blocked_ms: float = 0.0
 
     def record_search(self, latency_ms: float, cache_hit: bool, error: bool = False):
         self.search_count += 1
@@ -122,6 +126,14 @@ class MetricsCollector:
         except ImportError:
             return None
 
+    def _check_event_loop_blocking(self) -> float:
+        now = time.monotonic()
+        elapsed = (now - self._last_block_check) * 1000
+        self._last_block_check = now
+        if elapsed > 100:
+            self._blocked_ms = elapsed
+        return self._blocked_ms
+
     def snapshot(self) -> MetricSnapshot:
         total_cache = self.cache_hits + self.cache_misses
         cache_ratio = self.cache_hits / total_cache if total_cache > 0 else 0.0
@@ -134,7 +146,17 @@ class MetricsCollector:
             src: data["rate_limit_max"] for src, data in self.api_calls.items()
         }
 
+        blocked_ms = self._check_event_loop_blocking()
         alerts = self._evaluate_alerts(cache_ratio, api_error_rate, rate_limits)
+
+        if blocked_ms > 100:
+            alerts.append({
+                "metric": "recon_event_loop_blocked",
+                "value": blocked_ms,
+                "threshold": 100,
+                "severity": Severity.P2.value,
+                "runbook": "RB-006",
+            })
 
         return MetricSnapshot(
             timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -149,6 +171,7 @@ class MetricsCollector:
             memory_mb=self.get_memory_mb(),
             api_error_rate=api_error_rate,
             rate_limit_proximity=rate_limits,
+            event_loop_blocked_ms=blocked_ms,
             active_alerts=alerts,
         )
 

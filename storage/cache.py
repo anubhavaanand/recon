@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS collections (
     saved_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     notes TEXT,
     tags TEXT DEFAULT '[]',
-    score_at_save INTEGER
+    score_at_save INTEGER,
+    hit_count INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_collections_name ON collections(collection_name);
@@ -105,9 +106,9 @@ CREATE TABLE IF NOT EXISTS cache_health (
 CREATE INDEX IF NOT EXISTS idx_cache_health_table ON cache_health(table_name, check_at DESC);
 
 -- ============================================================================
--- 6. scraper_metadata: Per-source tracking (rate limits, circuit breaker)
+-- 6. api_metadata: Per-source tracking (rate limits, circuit breaker)
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS scraper_metadata (
+CREATE TABLE IF NOT EXISTS api_metadata (
     source_name TEXT PRIMARY KEY,
     base_url TEXT NOT NULL,
     auth_type TEXT NOT NULL,
@@ -122,7 +123,7 @@ CREATE TABLE IF NOT EXISTS scraper_metadata (
     api_key_masked TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_scraper_metadata_circuit ON scraper_metadata(circuit_open);
+CREATE INDEX IF NOT EXISTS idx_api_metadata_circuit ON api_metadata(circuit_open);
 
 -- ============================================================================
 -- 7. export_log: Audit trail of exported files
@@ -174,9 +175,22 @@ CREATE TABLE IF NOT EXISTS enrichment_cache (
 );
 
 -- ============================================================================
+-- 9. embeddings: Vector cache for semantic search (nomic-embed-text)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS embeddings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    patent_id TEXT NOT NULL,
+    embedding_json TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(patent_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_embeddings_patent ON embeddings(patent_id);
+
+-- ============================================================================
 -- FTS5: Full-text search on collections tags
 -- ============================================================================
-CREATE VIRTUAL TABLE IF NOT EXISTS collections_tags_fts USING fts5(
+CREATE VIRTUAL TABLE IF NOT EXISTS idx_collections_tags USING fts5(
     tags,
     content='collections',
     content_rowid='id',
@@ -184,17 +198,17 @@ CREATE VIRTUAL TABLE IF NOT EXISTS collections_tags_fts USING fts5(
 );
 
 -- Triggers to keep FTS5 index in sync with collections table
-CREATE TRIGGER IF NOT EXISTS collections_tags_ai AFTER INSERT ON collections BEGIN
-    INSERT INTO collections_tags_fts(rowid, tags) VALUES (new.id, new.tags);
+CREATE TRIGGER IF NOT EXISTS idx_collections_tags_ai AFTER INSERT ON collections BEGIN
+    INSERT INTO idx_collections_tags(rowid, tags) VALUES (new.id, new.tags);
 END;
 
-CREATE TRIGGER IF NOT EXISTS collections_tags_ad AFTER DELETE ON collections BEGIN
-    INSERT INTO collections_tags_fts(collections_tags_fts, rowid, tags) VALUES ('delete', old.id, old.tags);
+CREATE TRIGGER IF NOT EXISTS idx_collections_tags_ad AFTER DELETE ON collections BEGIN
+    INSERT INTO idx_collections_tags(idx_collections_tags, rowid, tags) VALUES ('delete', old.id, old.tags);
 END;
 
-CREATE TRIGGER IF NOT EXISTS collections_tags_au AFTER UPDATE ON collections BEGIN
-    INSERT INTO collections_tags_fts(collections_tags_fts, rowid, tags) VALUES ('delete', old.id, old.tags);
-    INSERT INTO collections_tags_fts(rowid, tags) VALUES (new.id, new.tags);
+CREATE TRIGGER IF NOT EXISTS idx_collections_tags_au AFTER UPDATE ON collections BEGIN
+    INSERT INTO idx_collections_tags(idx_collections_tags, rowid, tags) VALUES ('delete', old.id, old.tags);
+    INSERT INTO idx_collections_tags(rowid, tags) VALUES (new.id, new.tags);
 END;
 """
 
@@ -207,6 +221,7 @@ class CacheDatabase:
     def __init__(self, db_path: str = "recon_cache.db"):
         self.db_path = str(db_path)
         self._init_db()
+        self.enforce_eviction_policy()
 
     def _init_db(self) -> None:
         conn = sqlite3.connect(self.db_path)
@@ -422,7 +437,7 @@ class CacheDatabase:
     def record_cache_health(self) -> dict:
         tables = [
             "search_results", "collections", "citations", "search_history",
-            "cache_health", "scraper_metadata", "export_log", "terminal_sessions",
+            "cache_health", "api_metadata", "export_log", "terminal_sessions",
         ]
         table_data = []
         with contextlib.closing(self.get_connection()) as conn:
@@ -470,7 +485,7 @@ class CacheDatabase:
             "tables": table_data,
         }
 
-    # ── scraper_metadata ─────────────────────────────────────────────────────
+    # ── api_metadata ──────────────────────────────────────────────────────────
 
     def get_all_source_health(self) -> list[dict]:
         with contextlib.closing(self.get_connection()) as conn:
@@ -478,25 +493,25 @@ class CacheDatabase:
                 """SELECT source_name, base_url, auth_type, rate_limit_per_minute,
                           requests_this_hour, last_request_at, last_error_at,
                           last_error_code, consecutive_errors, circuit_open
-                   FROM scraper_metadata ORDER BY source_name"""
+                   FROM api_metadata ORDER BY source_name"""
             ).fetchall()
             return [dict(r) for r in rows]
 
-    def get_scraper_metadata(self, source_name: str) -> Optional[dict]:
+    def get_api_metadata(self, source_name: str) -> Optional[dict]:
         with contextlib.closing(self.get_connection()) as conn:
             row = conn.execute(
-                "SELECT * FROM scraper_metadata WHERE source_name = ?",
+                "SELECT * FROM api_metadata WHERE source_name = ?",
                 (source_name,),
             ).fetchone()
             return dict(row) if row else None
 
-    def upsert_scraper_metadata(self, source_name: str, **kwargs) -> None:
+    def upsert_api_metadata(self, source_name: str, **kwargs) -> None:
         fields = ", ".join(f"{k} = ?" for k in kwargs)
         values = list(kwargs.values())
         with contextlib.closing(self.get_connection()) as conn:
             with conn:
                 conn.execute(
-                    f"INSERT OR REPLACE INTO scraper_metadata (source_name, {', '.join(kwargs.keys())}) "
+                    f"INSERT OR REPLACE INTO api_metadata (source_name, {', '.join(kwargs.keys())}) "
                     f"VALUES (?, {', '.join('?' for _ in kwargs)})",
                     (source_name, *values),
                 )
@@ -580,6 +595,34 @@ class CacheDatabase:
                     "INSERT OR REPLACE INTO enrichment_cache (patent_id, cross_refs_json, enriched_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
                     (patent_id, data),
                 )
+
+    # ── embeddings ───────────────────────────────────────────────────────────
+
+    def save_embedding(self, patent_id: str, embedding: list[float]) -> None:
+        with contextlib.closing(self.get_connection()) as conn:
+            with conn:
+                conn.execute(
+                    """INSERT OR REPLACE INTO embeddings (patent_id, embedding_json)
+                       VALUES (?, ?)""",
+                    (patent_id, json.dumps(embedding)),
+                )
+
+    def get_embedding(self, patent_id: str) -> list[float] | None:
+        with contextlib.closing(self.get_connection()) as conn:
+            row = conn.execute(
+                "SELECT embedding_json FROM embeddings WHERE patent_id = ?",
+                (patent_id,),
+            ).fetchone()
+            if row:
+                return json.loads(row["embedding_json"])
+            return None
+
+    def get_all_embeddings(self) -> dict[str, list[float]]:
+        with contextlib.closing(self.get_connection()) as conn:
+            rows = conn.execute(
+                "SELECT patent_id, embedding_json FROM embeddings"
+            ).fetchall()
+            return {r["patent_id"]: json.loads(r["embedding_json"]) for r in rows}
 
     # ── eviction ─────────────────────────────────────────────────────────────
 

@@ -5,6 +5,7 @@ MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 
 MIGRATIONS = [
     ("0.1.0", "v0_1_0_initial.sql"),
+    ("0.2.0", "v0_2_0_gaps.sql"),
 ]
 
 
@@ -52,7 +53,7 @@ def validate(db_path: str) -> list[str]:
     conn = sqlite3.connect(db_path)
     tables = [
         "search_results", "collections", "citations", "search_history",
-        "cache_health", "scraper_metadata", "export_log", "terminal_sessions",
+        "cache_health", "api_metadata", "export_log", "terminal_sessions",
         "schema_version",
     ]
     missing = []

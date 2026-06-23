@@ -24,7 +24,7 @@ from typing import List
 import httpx
 from bs4 import BeautifulSoup
 
-from clients.base_scraper import BaseScraper, RateLimitedError, SourceDisabledError
+from clients.base_scraper import BaseScraper, RateLimitedError, SourceDisabledError, _DDG_SEMAPHORE
 from clients.circuit_breaker import CircuitBreaker, CircuitOpenError
 from core.models import PatentRecord
 from core.search import sanitize_query
@@ -32,45 +32,342 @@ from core.search import sanitize_query
 logger = logging.getLogger("recon")
 
 
-_SCRAPER = BaseScraper(source_name="scrapers")
 _ddg_breaker = CircuitBreaker(name="duckduckgo", threshold=3, reset_timeout=60)
 _google_breaker = CircuitBreaker(name="google_patents", threshold=3, reset_timeout=60)
 
 
-async def _ddg_search(query: str, max_results: int = 5) -> list:
-    """Search DuckDuckGo via ddgs library, capped at 2 concurrent workers."""
-    _ddg_breaker.check()
-    await asyncio.sleep(random.uniform(1.0, 3.0))
-    async with BaseScraper.get_ddg_semaphore():
-        from ddgs import DDGS
-        def _sync_search():
-            with DDGS() as ddgs:
-                return list(ddgs.text(query, max_results=max_results))
+# ── Concrete scraper classes ──────────────────────────────────────────
+
+
+class GooglePatentsScraper(BaseScraper):
+    """Scrape Google Patents via DDG discovery + HTML parsing."""
+
+    def __init__(self):
+        super().__init__(source_name="google_patents")
+        self._breaker = _google_breaker
+
+    async def fetch(self, patent_id: str) -> PatentRecord | None:
+        url = f"https://patents.google.com/patent/{patent_id}/en/"
+        html = await self.fetch_html(url)
+        if not html:
+            return None
+        parsed = parse_google_patent_html(html)
+        if not parsed:
+            return None
+        return _parsed_to_record(parsed)
+
+    async def search(self, query: str) -> List[PatentRecord]:
+        """Search via DDG discovery, fetch and parse result pages."""
+        query = sanitize_query(query)
         try:
-            return await asyncio.wait_for(asyncio.to_thread(_sync_search), timeout=8.0)
-        except asyncio.TimeoutError:
-            _ddg_breaker.record_failure()
+            results = await _ddg_search(f"site:patents.google.com {query}", max_results=5)
+        except CircuitOpenError:
+            logger.warning("DDG circuit breaker OPEN, skipping Google Patents discovery")
+            return []
+        except Exception:
             return []
 
+        urls = []
+        for r in results:
+            href = r.get("href", "")
+            if "patents.google.com/patent/" in href:
+                urls.append(href)
 
-async def _fetch_html(
-    url: str, timeout: float = 15.0, breaker: CircuitBreaker | None = None
-) -> str | None:
-    """Fetch HTML with resilience. Returns None on failure."""
-    if breaker:
-        breaker.check()
-    try:
-        resp = await _SCRAPER._rate_limited_request(url, source=_SCRAPER.source_name)
-        if breaker:
-            breaker.record_success()
-        return resp.text
-    except (RateLimitedError, SourceDisabledError, httpx.HTTPError):
-        if breaker:
-            breaker.record_failure()
+        return await _fetch_patents_from_urls(urls, parse_google_patent_html, breaker=self._breaker)
+
+
+class WIPOScraper(BaseScraper):
+    """Scrape WIPO PATENTSCOPE via DDG discovery + HTML parsing."""
+
+    def __init__(self):
+        super().__init__(source_name="wipo")
+
+    async def fetch(self, patent_id: str) -> PatentRecord | None:
+        url = f"https://patentscope.wipo.int/search/en/detail.jsf?docId={patent_id}"
+        html = await self.fetch_html(url)
+        if not html:
+            return None
+        parsed = parse_wipo_patent_html(html)
+        if not parsed:
+            return None
+        return _parsed_to_record(parsed)
+
+    async def search(self, query: str) -> List[PatentRecord]:
+        """Search via DDG discovery, fall back to snippet data."""
+        query = sanitize_query(query)
+        try:
+            results = await _ddg_search(f"site:patentscope.wipo.int {query}", max_results=5)
+        except CircuitOpenError:
+            logger.warning("DDG circuit breaker OPEN, skipping WIPO discovery")
+            return []
+        except Exception:
+            return []
+
+        records: list[PatentRecord] = []
+        seen_ids: set[str] = set()
+
+        patent_urls = []
+        for r in results:
+            href = r.get("href", "")
+            if "patentscope.wipo.int" not in href:
+                continue
+            title_lower = (r.get("title") or "").lower()
+            if any(kw in title_lower for kw in ["passkey", "sign in", "log in", "register", "create account"]):
+                continue
+            patent_urls.append(href)
+
+        if patent_urls:
+            page_records = await _fetch_patents_from_urls(
+                patent_urls, parse_wipo_patent_html, timeout=6.0
+            )
+            if page_records:
+                return page_records
+
+        for r in results:
+            href = r.get("href", "")
+            if "patentscope.wipo.int" not in href:
+                continue
+
+            title_lower = (r.get("title") or "").lower()
+            if any(kw in title_lower for kw in ["passkey", "sign in", "log in", "register", "create account"]):
+                continue
+
+            title_raw = r.get("title", "")
+            snippet = r.get("body", "")
+
+            pid = None
+            m = re.search(r"/WO([2-9]\d{3,}/\d+)", href.replace("-", ""))
+            if m:
+                pid = "WO" + m.group(1).replace("/", "")
+            m2 = re.search(r"(WO[2-9]\d{7,})", title_raw)
+            if not pid and m2:
+                pid = m2.group(1)
+            if not pid:
+                m3 = re.search(r"(WO[2-9]\d{7,})", href)
+                if m3:
+                    pid = m3.group(1)
+            if not pid:
+                continue
+
+            if pid in seen_ids:
+                continue
+            seen_ids.add(pid)
+
+            title = title_raw.strip() if title_raw else "[?]"
+            for prefix in [pid, pid.replace("WO", "WO/"), pid.replace("WO", "Wo/")]:
+                if title.startswith(prefix):
+                    title = title[len(prefix):].strip().lstrip("- ")
+            if not title:
+                title = "[?]"
+
+            abstract = snippet.strip() if snippet else "[?]"
+
+            parsed_assignee = "[?]"
+            parsed_dates: dict[str, str] = {"filed": "[?]"}
+            try:
+                html = await self.fetch_html(href, timeout=6.0)
+                if html:
+                    parsed = parse_wipo_patent_html(html)
+                    if parsed:
+                        if parsed.get("assignee") and parsed["assignee"] != "[?]":
+                            parsed_assignee = parsed["assignee"]
+                        if parsed.get("dates"):
+                            parsed_dates = parsed["dates"]
+            except Exception:
+                pass
+
+            records.append(PatentRecord(
+                id=pid,
+                title=title,
+                assignee=parsed_assignee,
+                dates=parsed_dates,
+                abstract=abstract,
+                claims=["[?]"],
+                image_urls=["[?]"],
+                status="UNKNOWN",
+                family_id="UNKNOWN",
+            ))
+
+        return records
+
+
+class LensScraper(BaseScraper):
+    """Scrape Lens.org via DDG snippet data (JS-rendered pages)."""
+
+    def __init__(self):
+        super().__init__(source_name="lens")
+
+    async def fetch(self, patent_id: str) -> PatentRecord | None:
         return None
 
+    async def search(self, query: str) -> List[PatentRecord]:
+        query = sanitize_query(query)
+        try:
+            results = await _ddg_search(f"site:lens.org/lens/patent {query}", max_results=5)
+        except CircuitOpenError:
+            logger.warning("DDG circuit breaker OPEN, skipping Lens discovery")
+            return []
+        except Exception:
+            return []
 
-def _parse_google_patent_html(html: str) -> dict | None:
+        records: list[PatentRecord] = []
+        seen_ids: set[str] = set()
+        _PATENT_NUM_RE = re.compile(r"[A-Z]{2}\d{4,}[A-Z0-9]{0,3}")
+
+        for r in results:
+            href = r.get("href", "")
+            if "lens.org/lens/patent/" not in href:
+                continue
+
+            title_raw = r.get("title", "")
+            snippet = r.get("body", "")
+
+            pid = None
+            m = re.search(r"/lens/patent/([\w-]+)", href)
+            if m:
+                pid = m.group(1)
+
+            if not pid or pid in seen_ids:
+                continue
+
+            actual_pn = None
+            for text in [title_raw, snippet]:
+                if text:
+                    m2 = _PATENT_NUM_RE.search(text)
+                    if m2:
+                        actual_pn = re.sub(r'\s+', '', m2.group(0))
+                        break
+            final_id = actual_pn if actual_pn else pid
+            seen_ids.add(final_id)
+
+            filed = "[?]"
+            if snippet:
+                dm = re.search(r"(\d{4}-\d{2}-\d{2})", snippet)
+                if dm:
+                    filed = dm.group(1)
+
+            assignee = "[?]"
+            title_clean = title_raw.strip() if title_raw else "[?]"
+            for sep in [" — ", " - ", " – "]:
+                parts = title_clean.split(sep, 1)
+                if len(parts) == 2:
+                    potential_assignee = parts[1].strip()
+                    if potential_assignee and not _PATENT_NUM_RE.fullmatch(potential_assignee):
+                        assignee = potential_assignee
+                        title_clean = parts[0].strip()
+                        break
+
+            abstract = snippet.strip() if snippet else "[?]"
+
+            records.append(PatentRecord(
+                id=final_id,
+                title=title_clean,
+                assignee=assignee,
+                dates={"filed": filed},
+                abstract=abstract,
+                claims=["[?]"],
+                image_urls=["[?]"],
+                status="UNKNOWN",
+                family_id="UNKNOWN",
+            ))
+
+        return records
+
+
+class EPOScraper(BaseScraper):
+    """Scrape EPO Register via DDG discovery + HTML deep-fetch."""
+
+    def __init__(self):
+        super().__init__(source_name="epo")
+
+    async def fetch(self, patent_id: str) -> PatentRecord | None:
+        ep_num = patent_id[2:] if patent_id.startswith("EP") else patent_id
+        url = f"https://register.epo.org/application?number=EP{ep_num}"
+        html = await self.fetch_html(url)
+        if not html:
+            return None
+        return _parse_epo_detail_to_record(html, patent_id)
+
+    async def search(self, query: str) -> List[PatentRecord]:
+        query = sanitize_query(query)
+        try:
+            results = await _ddg_search(f"site:register.epo.org {query}", max_results=5)
+        except CircuitOpenError:
+            logger.warning("DDG circuit breaker OPEN, skipping EPO discovery")
+            return []
+        except Exception:
+            return []
+
+        records: list[PatentRecord] = []
+        seen_ids: set[str] = set()
+
+        for r in results:
+            href = r.get("href", "")
+            if "register.epo.org" not in href:
+                continue
+
+            title_raw = r.get("title", "")
+            snippet = r.get("body", "")
+
+            pid = None
+            m = re.search(r"(EP\d{7,})", href)
+            if m:
+                pid = m.group(1)
+            m2 = re.search(r"(EP\d{7,})", title_raw)
+            if not pid and m2:
+                pid = m2.group(1)
+            if not pid:
+                m3 = re.search(r"application.number=(\w+)", href)
+                if m3:
+                    pid = m3.group(1)
+
+            if not pid or pid in seen_ids:
+                continue
+            seen_ids.add(pid)
+
+            title = title_raw.strip() if title_raw else "[?]"
+            abstract = snippet.strip() if snippet else "[?]"
+
+            records.append(PatentRecord(
+                id=pid,
+                title=title,
+                assignee="[?]",
+                dates={"filed": "[?]"},
+                abstract=abstract,
+                claims=["[?]"],
+                image_urls=["[?]"],
+                status="UNKNOWN",
+                family_id="UNKNOWN",
+            ))
+
+        if records:
+            for rec in records:
+                try:
+                    ep_num = rec.id[2:] if rec.id.startswith("EP") else rec.id
+                    ep_url = f"https://register.epo.org/application?number=EP{ep_num}"
+                    html = await self.fetch_html(ep_url, timeout=8.0)
+                    if not html:
+                        continue
+                    enriched = _parse_epo_detail_to_record(html, rec.id)
+                    if enriched:
+                        if enriched.title != "[?]":
+                            rec.title = enriched.title
+                        if enriched.assignee != "[?]":
+                            rec.assignee = enriched.assignee
+                        if enriched.abstract != "[?]":
+                            rec.abstract = enriched.abstract
+                        if enriched.dates.get("filed", "[?]") != "[?]":
+                            rec.dates["filed"] = enriched.dates["filed"]
+                except Exception:
+                    continue
+
+        return records
+
+
+# ── Parsing helpers (module-level for testability) ────────────────────
+
+
+def parse_google_patent_html(html: str) -> dict | None:
     """Parse a single Google Patents page and extract patent fields."""
     soup = BeautifulSoup(html, "lxml")
 
@@ -136,7 +433,7 @@ def _parse_google_patent_html(html: str) -> dict | None:
     }
 
 
-def _parse_wipo_patent_html(html: str) -> dict | None:
+def parse_wipo_patent_html(html: str) -> dict | None:
     """Parse a single WIPO PATENTSCOPE page."""
     soup = BeautifulSoup(html, "lxml")
 
@@ -157,7 +454,6 @@ def _parse_wipo_patent_html(html: str) -> dict | None:
     abstract_el = soup.select_one(".abstract, [id*='abstract']")
     abstract = abstract_el.get_text(separator=" ", strip=True) if abstract_el else "[?]"
 
-    # Parse publication and filing dates from meta tags or structured elements
     filed = "[?]"
     pub_date_el = soup.select_one(
         "meta[name='pubDate'], meta[name='filingDate'], "
@@ -172,7 +468,6 @@ def _parse_wipo_patent_html(html: str) -> dict | None:
                 filed = d
 
     if filed == "[?]":
-        # Fallback: look for any date-like text in the page
         for tag in soup.find_all(["span", "td", "div"]):
             text = tag.get_text(separator=" ", strip=True)
             m = re.search(r"(\d{4}-\d{2}-\d{2})", text)
@@ -190,42 +485,107 @@ def _parse_wipo_patent_html(html: str) -> dict | None:
     }
 
 
+def _parse_epo_detail_to_record(html: str, patent_id: str) -> PatentRecord | None:
+    """Parse EPO register HTML into a PatentRecord."""
+    soup = BeautifulSoup(html, "lxml")
+
+    title = "[?]"
+    title_el = soup.select_one("h1, .page-title")
+    if title_el:
+        t = title_el.get_text(separator=" ", strip=True)
+        if t:
+            title = t
+
+    assignee = "[?]"
+    applicant_el = soup.select_one(".applicant, [id*='applicant']")
+    if not applicant_el:
+        for td in soup.find_all("td"):
+            if "applicant" in td.get_text(separator=" ", strip=True).lower():
+                sibling = td.find_next("td")
+                if sibling:
+                    applicant_el = sibling
+                break
+    if applicant_el:
+        a_text = applicant_el.get_text(separator=" ", strip=True)
+        a_text = re.sub(r"(?i)for all designated states\s*", "", a_text)
+        parts = re.split(r",|\d", a_text)
+        clean_assignee = parts[0].strip()
+        if clean_assignee:
+            assignee = clean_assignee
+
+    abstract = "[?]"
+    abstract_el = soup.select_one(".abstract, [id*='abstract'], .patent-abstract")
+    if abstract_el:
+        ab = abstract_el.get_text(separator=" ", strip=True)
+        if ab:
+            abstract = ab
+
+    filed = "[?]"
+    date_texts = soup.get_text()
+    dm = re.search(r"(\d{4}-\d{2}-\d{2})", date_texts)
+    if not dm:
+        dm = re.search(r"(\d{2}\.\d{2}\.\d{4})", date_texts)
+    if dm:
+        filed = dm.group(1)[:10]
+
+    return PatentRecord(
+        id=patent_id,
+        title=title,
+        assignee=assignee,
+        dates={"filed": filed} if filed != "[?]" else {},
+        abstract=abstract,
+        claims=["[?]"],
+        image_urls=["[?]"],
+        status="UNKNOWN",
+        family_id="UNKNOWN",
+    )
+
+
+# ── Shared helpers ────────────────────────────────────────────────────
+
+
+async def _ddg_search(query: str, max_results: int = 5) -> list:
+    """Search DuckDuckGo via ddgs library, capped at 2 concurrent workers."""
+    _ddg_breaker.check()
+    async with _DDG_SEMAPHORE:
+        await asyncio.sleep(random.uniform(1.0, 3.0))
+        from ddgs import DDGS
+        def _sync_search():
+            with DDGS() as ddgs:
+                return list(ddgs.text(query, max_results=max_results))
+        try:
+            return await asyncio.wait_for(asyncio.to_thread(_sync_search), timeout=8.0)
+        except asyncio.TimeoutError:
+            _ddg_breaker.record_failure()
+            return []
+
+
 async def _fetch_patents_from_urls(
     urls: list[str], parser_fn, timeout: float = 8.0, breaker: CircuitBreaker | None = None
 ) -> list[PatentRecord]:
     """Fetch patent pages concurrently and parse them."""
+    scraper = GooglePatentsScraper()
     seen_ids: set[str] = set()
     records: list[PatentRecord] = []
 
     async def _fetch_and_parse(url: str) -> PatentRecord | None:
-        html = await _fetch_html(url, timeout=timeout, breaker=breaker)
+        html = await scraper.fetch_html(url, timeout=timeout)
         if not html:
             return None
+        if breaker:
+            breaker.check()
         parsed = await asyncio.to_thread(parser_fn, html)
         if not parsed:
             return None
+        if breaker:
+            breaker.record_success()
 
         pid = parsed["id"]
         if pid in seen_ids:
             return None
         seen_ids.add(pid)
 
-        if not parsed.get("dates"):
-            parsed["dates"] = {"filed": "[?]"}
-        if not parsed.get("status"):
-            parsed["status"] = "UNKNOWN"
-
-        return PatentRecord(
-            id=pid,
-            title=parsed["title"],
-            assignee=parsed["assignee"],
-            dates=parsed["dates"],
-            abstract=parsed["abstract"],
-            claims=parsed.get("claims", []),
-            image_urls=parsed.get("image_urls", []),
-            status=parsed["status"],
-            family_id="UNKNOWN",
-        )
+        return _parsed_to_record(parsed)
 
     tasks = [_fetch_and_parse(u) for u in urls]
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -235,343 +595,43 @@ async def _fetch_patents_from_urls(
     return records
 
 
-async def search_google_patents(query: str) -> List[PatentRecord]:
-    """Search Google Patents via DuckDuckGo discovery + HTML scraping."""
-    query = sanitize_query(query)
-    try:
-        results = await _ddg_search(f"site:patents.google.com {query}", max_results=5)
-    except CircuitOpenError:
-        logger.warning("DDG circuit breaker OPEN, skipping Google Patents discovery")
-        return []
-    except Exception:
-        return []
-
-    urls = []
-    for r in results:
-        href = r.get("href", "")
-        if "patents.google.com/patent/" in href:
-            urls.append(href)
-
-    return await _fetch_patents_from_urls(
-        urls, _parse_google_patent_html, breaker=_google_breaker
+def _parsed_to_record(parsed: dict) -> PatentRecord:
+    """Convert parsed dict to PatentRecord."""
+    if not parsed.get("dates"):
+        parsed["dates"] = {"filed": "[?]"}
+    if not parsed.get("status"):
+        parsed["status"] = "UNKNOWN"
+    return PatentRecord(
+        id=parsed["id"],
+        title=parsed["title"],
+        assignee=parsed["assignee"],
+        dates=parsed["dates"],
+        abstract=parsed["abstract"],
+        claims=parsed.get("claims", []),
+        image_urls=parsed.get("image_urls", []),
+        status=parsed["status"],
+        family_id="UNKNOWN",
     )
 
 
+# ── Public API (unchanged signatures) ─────────────────────────────────
+
+
+async def search_google_patents(query: str) -> List[PatentRecord]:
+    """Search Google Patents via DuckDuckGo discovery + HTML scraping."""
+    return await GooglePatentsScraper().search(query)
+
+
 async def search_wipo_patents(query: str) -> List[PatentRecord]:
-    """Search WIPO PATENTSCOPE via DuckDuckGo snippet data.
-
-    WIPO PATENTSCOPE uses JSF (JavaScript Faces) for rendering, so scraping
-    the HTML directly yields empty data. Instead we use DuckDuckGo search
-    result snippets which include title, description, and patent number.
-    """
-    query = sanitize_query(query)
-    try:
-        results = await _ddg_search(f"site:patentscope.wipo.int {query}", max_results=5)
-    except CircuitOpenError:
-        logger.warning("DDG circuit breaker OPEN, skipping WIPO discovery")
-        return []
-    except Exception:
-        return []
-
-    records: list[PatentRecord] = []
-    seen_ids: set[str] = set()
-
-    # Try fetching individual patent pages concurrently for richer data
-    patent_urls = []
-    for r in results:
-        href = r.get("href", "")
-        if "patentscope.wipo.int" not in href:
-            continue
-        title_lower = (r.get("title") or "").lower()
-        if any(kw in title_lower for kw in ["passkey", "sign in", "log in", "register", "create account"]):
-            continue
-        patent_urls.append(href)
-
-    # If we found patent page URLs, fetch and parse them
-    if patent_urls:
-        page_records = await _fetch_patents_from_urls(
-            patent_urls, _parse_wipo_patent_html, timeout=6.0
-        )
-        if page_records:
-            return page_records
-
-    for r in results:
-        href = r.get("href", "")
-        if "patentscope.wipo.int" not in href:
-            continue
-
-        # Skip non-patent pages
-        title_lower = (r.get("title") or "").lower()
-        if any(kw in title_lower for kw in ["passkey", "sign in", "log in", "register", "create account"]):
-            continue
-
-        # Extract patent number from URL or title
-        title_raw = r.get("title", "")
-        snippet = r.get("body", "")
-
-        pid = None
-        m = re.search(r"/WO([2-9]\d{3,}/\d+)", href.replace("-", ""))
-        if m:
-            pid = "WO" + m.group(1).replace("/", "")
-        m2 = re.search(r"(WO[2-9]\d{7,})", title_raw)
-        if not pid and m2:
-            pid = m2.group(1)
-        if not pid:
-            m3 = re.search(r"(WO[2-9]\d{7,})", href)
-            if m3:
-                pid = m3.group(1)
-        if not pid:
-            continue
-
-        if pid in seen_ids:
-            continue
-        seen_ids.add(pid)
-
-        # Clean title — strip leading patent ID prefix
-        title = title_raw.strip() if title_raw else "[?]"
-        for prefix in [pid, pid.replace("WO", "WO/"), pid.replace("WO", "Wo/")]:
-            if title.startswith(prefix):
-                title = title[len(prefix):].strip().lstrip("- ")
-        if not title:
-            title = "[?]"
-
-        abstract = snippet.strip() if snippet else "[?]"
-
-        # Try to fetch the detail page for richer data (assignee, dates)
-        parsed_assignee = "[?]"
-        parsed_dates: dict[str, str] = {"filed": "[?]"}
-        try:
-            html = await _fetch_html(href, timeout=6.0)
-            if html:
-                parsed = _parse_wipo_patent_html(html)
-                if parsed:
-                    if parsed.get("assignee") and parsed["assignee"] != "[?]":
-                        parsed_assignee = parsed["assignee"]
-                    if parsed.get("dates"):
-                        parsed_dates = parsed["dates"]
-        except Exception:
-            pass
-
-        records.append(PatentRecord(
-            id=pid,
-            title=title,
-            assignee=parsed_assignee,
-            dates=parsed_dates,
-            abstract=abstract,
-            claims=["[?]"],
-            image_urls=["[?]"],
-            status="UNKNOWN",
-            family_id="UNKNOWN",
-        ))
-
-    return records
+    """Search WIPO PATENTSCOPE via DuckDuckGo snippet data."""
+    return await WIPOScraper().search(query)
 
 
 async def search_lens_patents(query: str) -> List[PatentRecord]:
-    """Search Lens.org via DuckDuckGo snippet data.
-
-    Lens.org patent pages are JS-rendered and not accessible via httpx scraping.
-    We use DDGS search result snippets to extract patent numbers and titles.
-    """
-    query = sanitize_query(query)
-    try:
-        results = await _ddg_search(f"site:lens.org/lens/patent {query}", max_results=5)
-    except CircuitOpenError:
-        logger.warning("DDG circuit breaker OPEN, skipping Lens discovery")
-        return []
-    except Exception:
-        return []
-
-    records: list[PatentRecord] = []
-    seen_ids: set[str] = set()
-
-    # Patent number pattern: e.g. US12345678B2, EP1234567, WO2020123456
-    _PATENT_NUM_RE = re.compile(r"[A-Z]{2}\d{4,}[A-Z0-9]{0,3}")
-
-    for r in results:
-        href = r.get("href", "")
-        if "lens.org/lens/patent/" not in href:
-            continue
-
-        title_raw = r.get("title", "")
-        snippet = r.get("body", "")
-
-        # Extract Lens patent ID from URL: /lens/patent/XXX-XXX-XXX-XXX-XXX
-        pid = None
-        m = re.search(r"/lens/patent/([\w-]+)", href)
-        if m:
-            pid = m.group(1)
-
-        if not pid or pid in seen_ids:
-            continue
-
-        # Patent number pattern: e.g. US12345678B2, EP1234567, WO2020123456
-        _PATENT_NUM_RE = re.compile(r"[A-Z]{2}\s*\d{4,}\s*[A-Z0-9]{0,3}")
-
-        actual_pn = None
-        for text in [title_raw, snippet]:
-            if text:
-                m2 = _PATENT_NUM_RE.search(text)
-                if m2:
-                    actual_pn = re.sub(r'\s+', '', m2.group(0))
-                    break
-        final_id = actual_pn if actual_pn else pid
-        seen_ids.add(final_id)
-
-        # Parse dates from snippet text
-        filed = "[?]"
-        if snippet:
-            dm = re.search(r"(\d{4}-\d{2}-\d{2})", snippet)
-            if dm:
-                filed = dm.group(1)
-
-        # Parse assignee from title: "Patent Title - Assignee Name"
-        assignee = "[?]"
-        title_clean = title_raw.strip() if title_raw else "[?]"
-        for sep in [" — ", " - ", " – "]:
-            parts = title_clean.split(sep, 1)
-            if len(parts) == 2:
-                potential_assignee = parts[1].strip()
-                # Avoid treating other metadata as assignee
-                if potential_assignee and not _PATENT_NUM_RE.fullmatch(potential_assignee):
-                    assignee = potential_assignee
-                    title_clean = parts[0].strip()
-                    break
-
-        abstract = snippet.strip() if snippet else "[?]"
-
-        records.append(PatentRecord(
-            id=final_id,
-            title=title_clean,
-            assignee=assignee,
-            dates={"filed": filed},
-            abstract=abstract,
-            claims=["[?]"],
-            image_urls=["[?]"],
-            status="UNKNOWN",
-            family_id="UNKNOWN",
-        ))
-
-    return records
+    """Search Lens.org via DuckDuckGo snippet data."""
+    return await LensScraper().search(query)
 
 
 async def search_epo_patents(query: str) -> List[PatentRecord]:
-    """Search EPO Register via DuckDuckGo snippet data.
-
-    EPO register and Espacenet pages are behind Cloudflare and not accessible
-    via httpx scraping. We use DDGS search result snippets to extract patent
-    numbers and titles.
-    """
-    query = sanitize_query(query)
-    try:
-        results = await _ddg_search(f"site:register.epo.org {query}", max_results=5)
-    except CircuitOpenError:
-        logger.warning("DDG circuit breaker OPEN, skipping EPO discovery")
-        return []
-    except Exception:
-        return []
-
-    records: list[PatentRecord] = []
-    seen_ids: set[str] = set()
-
-    for r in results:
-        href = r.get("href", "")
-        if "register.epo.org" not in href:
-            continue
-
-        title_raw = r.get("title", "")
-        snippet = r.get("body", "")
-
-        # Extract patent number from URL
-        pid = None
-        m = re.search(r"(EP\d{7,})", href)
-        if m:
-            pid = m.group(1)
-        m2 = re.search(r"(EP\d{7,})", title_raw)
-        if not pid and m2:
-            pid = m2.group(1)
-        if not pid:
-            m3 = re.search(r"application.number=(\w+)", href)
-            if m3:
-                pid = m3.group(1)
-
-        if not pid or pid in seen_ids:
-            continue
-        seen_ids.add(pid)
-
-        title = title_raw.strip() if title_raw else "[?]"
-        abstract = snippet.strip() if snippet else "[?]"
-
-        records.append(PatentRecord(
-            id=pid,
-            title=title,
-            assignee="[?]",
-            dates={"filed": "[?]"},
-            abstract=abstract,
-            claims=["[?]"],
-            image_urls=["[?]"],
-            status="UNKNOWN",
-            family_id="UNKNOWN",
-        ))
-
-    # Second-pass: deep-fetch each patent page for richer data
-    if records:
-        for rec in records:
-            try:
-                ep_num = rec.id
-                if ep_num.startswith("EP"):
-                    ep_num = ep_num[2:]
-                ep_url = f"https://register.epo.org/application?number=EP{ep_num}"
-                html = await _fetch_html(ep_url, timeout=8.0)
-                if not html:
-                    continue
-                
-                def _parse_epo_detail(h: str) -> BeautifulSoup:
-                    return BeautifulSoup(h, "lxml")
-                    
-                soup = await asyncio.to_thread(_parse_epo_detail, html)
-
-                # Title
-                title_el = soup.select_one("h1, .page-title")
-                if title_el:
-                    t = title_el.get_text(separator=" ", strip=True)
-                    if t:
-                        rec.title = t
-
-                # Applicant / Assignee
-                applicant_el = soup.select_one(".applicant, [id*='applicant']")
-                if not applicant_el:
-                    for td in soup.find_all("td"):
-                        if "applicant" in td.get_text(separator=" ", strip=True).lower():
-                            sibling = td.find_next("td")
-                            if sibling:
-                                applicant_el = sibling
-                            break
-                if applicant_el:
-                    a_text = applicant_el.get_text(separator=" ", strip=True)
-                    # Clean up common EPO boilerplate
-                    a_text = re.sub(r"(?i)for all designated states\s*", "", a_text)
-                    # Often the company name is before an address, let's just take the first part
-                    parts = re.split(r",|\d", a_text)
-                    clean_assignee = parts[0].strip()
-                    if clean_assignee:
-                        rec.assignee = clean_assignee
-
-                # Abstract
-                abstract_el = soup.select_one(".abstract, [id*='abstract'], .patent-abstract")
-                if abstract_el:
-                    ab = abstract_el.get_text(separator=" ", strip=True)
-                    if ab:
-                        rec.abstract = ab
-
-                # Filing date — look for any date-like text
-                date_texts = soup.get_text()
-                dm = re.search(r"(\d{4}-\d{2}-\d{2})", date_texts)
-                if not dm:
-                    dm = re.search(r"(\d{2}\.\d{2}\.\d{4})", date_texts)
-                if dm:
-                    rec.dates["filed"] = dm.group(1)[:10]
-            except Exception:
-                continue
-
-    return records
+    """Search EPO Register via DuckDuckGo snippet data."""
+    return await EPOScraper().search(query)

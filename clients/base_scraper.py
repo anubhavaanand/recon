@@ -1,17 +1,20 @@
 """Shared BaseScraper with resilience mechanisms.
 
-Rotating User-Agents, randomized delays, DDG concurrency cap (Semaphore 2),
-per-source circuit breakers, and shared httpx.AsyncClient.
+Rotating User-Agents, randomized delays (inside semaphore block),
+DDG concurrency cap (Semaphore 2), per-source circuit breakers,
+and shared httpx.AsyncClient.
 """
 
 from __future__ import annotations
 
 import asyncio
 import random
-from contextlib import asynccontextmanager
+from abc import ABC, abstractmethod
 from typing import Optional
 
 import httpx
+
+from core.models import PatentRecord
 
 
 ROTATING_USER_AGENTS = [
@@ -58,25 +61,24 @@ async def _get_client() -> httpx.AsyncClient:
     return _shared_client
 
 
-class BaseScraper:
-    """Shared scraper base with resilience mechanisms.
+_DDG_SEMAPHORE = asyncio.Semaphore(2)
 
-    All scraper clients in clients/scrapers.py should either use this
-    class's methods or inherit from it.
+
+class BaseScraper(ABC):
+    """Abstract base scraper with shared resilience mechanisms.
+
+    Subclasses must implement fetch(patent_id).
+    Uses rotating UAs, jitter, DDG Semaphore(2), and per-source CBs.
     """
-
-    _ddg_semaphore = None
-
-    @classmethod
-    def get_ddg_semaphore(cls) -> asyncio.Semaphore:
-        if cls._ddg_semaphore is None:
-            cls._ddg_semaphore = asyncio.Semaphore(2)
-        return cls._ddg_semaphore
 
     def __init__(self, source_name: str = "generic"):
         self.source_name = source_name
         self._failure_count = 0
         self._disabled = False
+
+    @abstractmethod
+    async def fetch(self, patent_id: str) -> PatentRecord | None:
+        """Fetch a single patent by ID. Subclasses must implement."""
 
     async def _rate_limited_request(
         self, url: str, *, source: str = "", is_ddg: bool = False
@@ -84,8 +86,6 @@ class BaseScraper:
         """Make a rate-limited HTTP GET with rotating UA, jitter, and CB."""
         if self._disabled:
             raise SourceDisabledError(f"{source or self.source_name} is circuit-broken")
-
-        await asyncio.sleep(random.uniform(1.0, 3.0))
 
         client = await _get_client()
         headers = {
@@ -95,9 +95,11 @@ class BaseScraper:
         }
 
         if is_ddg:
-            async with self.get_ddg_semaphore():
+            async with _DDG_SEMAPHORE:
+                await asyncio.sleep(random.uniform(1.0, 3.0))
                 response = await client.get(url, headers=headers, follow_redirects=True)
         else:
+            await asyncio.sleep(random.uniform(1.0, 3.0))
             response = await client.get(url, headers=headers, follow_redirects=True)
 
         if response.status_code == 429:

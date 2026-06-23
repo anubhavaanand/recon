@@ -1,5 +1,7 @@
 import typer
 import asyncio
+import contextlib
+from pathlib import Path
 from typing import Optional
 from tui.app import ReconApp
 from storage.cache import CacheDatabase
@@ -252,18 +254,23 @@ def config_set(
     epo_secret: Optional[str] = typer.Option(None, "--epo-secret", help="EPO Consumer Secret (Insecure)"),
     lens_key: Optional[str] = typer.Option(None, "--lens-key", help="Lens API Key (Insecure)"),
     patsnap_key: Optional[str] = typer.Option(None, "--patsnap-key", help="PatSnap API Key (Insecure)"),
+    nim_key: Optional[str] = typer.Option(None, "--nim-key", help="NVIDIA NIM API Key (Insecure)"),
 ):
-    """Set API keys for patent sources."""
+    """Set API keys for patent sources and AI services."""
     config = load_config()
     
     # If any keys are provided via CLI, update them and warn the user
-    if any([uspto_key, epo_key, epo_secret, lens_key, patsnap_key]):
-        console.print("[red]WARNING: Providing API keys via CLI arguments is insecure. They may be leaked in shell history or process lists.[/red]")
+    if any([uspto_key, epo_key, epo_secret, lens_key, patsnap_key, nim_key]):
+        flags_str = ", ".join(
+            f"--{k}" for k, v in [("uspto-key", uspto_key), ("epo-key", epo_key), ("epo-secret", epo_secret), ("lens-key", lens_key), ("patsnap-key", patsnap_key), ("nim-key", nim_key)] if v
+        )
+        console.print(f"[red]WARNING: Providing API keys via CLI arguments is insecure. They may be leaked in shell history or process lists.[/red]")
         if uspto_key: config.uspto_api_key = uspto_key
         if epo_key: config.epo_consumer_key = epo_key
         if epo_secret: config.epo_consumer_secret = epo_secret
         if lens_key: config.lens_api_key = lens_key
         if patsnap_key: config.patsnap_api_key = patsnap_key
+        if nim_key: config.nvidia_nim_api_key = nim_key
     else:
         # Fallback to secure interactive mode
         console.print("[yellow]Enter your API keys (leave blank to keep current):[/yellow]")
@@ -282,6 +289,9 @@ def config_set(
 
         patsnap = typer.prompt("PatSnap API Key", default=config.patsnap_api_key or "", hide_input=True, show_default=False)
         if patsnap: config.patsnap_api_key = patsnap
+
+        nim = typer.prompt("NVIDIA NIM API Key", default=config.nvidia_nim_api_key or "", hide_input=True, show_default=False)
+        if nim: config.nvidia_nim_api_key = nim
     
     save_config(config)
     typer.echo("Configuration updated successfully and secured (chmod 600).")
@@ -298,6 +308,9 @@ def config_show():
     typer.echo(f"EPO Consumer Secret: {mask(config.epo_consumer_secret)}")
     typer.echo(f"Lens API Key: {mask(config.lens_api_key)}")
     typer.echo(f"PatSnap API Key: {mask(config.patsnap_api_key)}")
+    typer.echo(f"NVIDIA NIM API Key: {mask(config.nvidia_nim_api_key)}")
+    typer.echo(f"Semantic Search: {'enabled' if config.semantic_search_enabled else 'disabled'}")
+    typer.echo(f"AI Translation: {'enabled' if config.ai_translation_enabled else 'disabled'}")
 
 @config_app.command("test")
 def config_test():
@@ -364,6 +377,38 @@ def admin_stats():
         console.print(f"Avg query time: {health['avg_query_time_ms']:.1f} ms")
 
 
+@admin_app.command("cache-stats")
+def admin_cache_stats():
+    """Show detailed cache statistics: hit counts, size, eviction metrics."""
+    db = CacheDatabase()
+    with contextlib.closing(db.get_connection()) as conn:
+        total = conn.execute("SELECT COUNT(*) FROM search_results").fetchone()[0]
+        expired = conn.execute("SELECT COUNT(*) FROM search_results WHERE expires_at < CURRENT_TIMESTAMP").fetchone()[0]
+        hits = conn.execute("SELECT COALESCE(SUM(hit_count), 0) FROM search_results").fetchone()[0]
+        top = conn.execute(
+            "SELECT query_text, hit_count, last_accessed FROM search_results ORDER BY hit_count DESC LIMIT 5"
+        ).fetchall()
+
+    size_mb = Path(db.db_path).stat().st_size / (1024 * 1024)
+
+    console.print("[bold]Cache Stats[/bold]")
+    console.print(f"  Total entries:     {total}")
+    console.print(f"  Expired entries:   {expired}")
+    console.print(f"  Total hit count:   {hits}")
+    console.print(f"  DB size:           {size_mb:.1f} MB")
+
+    if top:
+        console.print("\n[bold]Top 5 most accessed:[/bold]")
+        for row in top:
+            console.print(f"  {row['query_text'][:60]:60s}  hits={row['hit_count']}  last={row['last_accessed'] or 'never'}")
+
+    eviction = db.enforce_eviction_policy()
+    console.print(f"\n[bold]Eviction (dry run):[/bold]")
+    console.print(f"  Expired deleted:   {eviction['deleted_expired']}")
+    console.print(f"  LRU deleted:       {eviction['deleted_lru']}")
+    console.print(f"  Old history:       {eviction['deleted_history']}")
+
+
 @admin_app.command("cache-clear")
 def admin_cache_clear(
     older_than: int = typer.Option(30, "--older-than", help="Delete cached results older than N days."),
@@ -383,40 +428,78 @@ def admin_cache_clear(
 
 
 @admin_app.command("diagnostics")
-def admin_diagnostics():
+def admin_diagnostics(
+    api_ping: bool = typer.Option(False, "--api-ping", help="Ping all configured APIs and show latency."),
+):
     """Show source health: circuit breaker status, error counts, rate limits."""
+    from core.metrics import MetricsCollector, VERSION, SESSION_ID
+
     db = CacheDatabase()
     sources = db.get_all_source_health()
 
     if not sources:
         console.print("[yellow]No source metadata recorded. Run a search first to populate.[/yellow]")
-        return
+    else:
+        table = Table(title="Source Health")
+        table.add_column("Source", style="cyan")
+        table.add_column("Auth", style="magenta")
+        table.add_column("Rate Limit", style="yellow")
+        table.add_column("Req/hr", style="green")
+        table.add_column("Errors", style="red")
+        table.add_column("Last Error", style="red")
+        table.add_column("Circuit", style="bold")
 
-    table = Table(title="Source Health")
-    table.add_column("Source", style="cyan")
-    table.add_column("Auth", style="magenta")
-    table.add_column("Rate Limit", style="yellow")
-    table.add_column("Req/hr", style="green")
-    table.add_column("Errors", style="red")
-    table.add_column("Last Error", style="red")
-    table.add_column("Circuit", style="bold")
+        for s in sources:
+            circuit_status = "[red]OPEN[/red]" if s["circuit_open"] else "[green]CLOSED[/green]"
+            last_err = s["last_error_code"] or "—"
+            last_err_time = (s["last_error_at"] or "")[:19] if s.get("last_error_at") else "—"
+            table.add_row(
+                s["source_name"],
+                s["auth_type"] or "—",
+                str(s["rate_limit_per_minute"] or "—"),
+                str(s["requests_this_hour"] or "0"),
+                str(s["consecutive_errors"] or "0"),
+                f"{last_err} @ {last_err_time}",
+                circuit_status,
+            )
 
-    for s in sources:
-        circuit_status = "[red]OPEN[/red]" if s["circuit_open"] else "[green]CLOSED[/green]"
-        last_err = s["last_error_code"] or "—"
-        last_err_time = (s["last_error_at"] or "")[:19] if s.get("last_error_at") else "—"
-        table.add_row(
-            s["source_name"],
-            s["auth_type"] or "—",
-            str(s["rate_limit_per_minute"] or "—"),
-            str(s["requests_this_hour"] or "0"),
-            str(s["consecutive_errors"] or "0"),
-            f"{last_err} @ {last_err_time}",
-            circuit_status,
-        )
+        console.print(table)
+        console.print("\n[dim]Sources with OPEN circuits are skipped during searches.[/dim]")
 
-    console.print(table)
-    console.print("\n[dim]Sources with OPEN circuits are skipped during searches.[/dim]")
+    if api_ping:
+        import asyncio
+        import httpx
+
+        console.print("\n[cyan]API Ping Results:[/cyan]")
+        targets = {
+            "USPTO": "https://api.uspto.gov/api/v1/",
+            "WIPO": "https://patentscope.wipo.int",
+            "EPO": "https://ops.epo.org",
+            "Lens": "https://api.lens.org",
+        }
+
+        async def _ping(name: str, url: str) -> tuple[str, float | str]:
+            try:
+                start = time.time()
+                async with httpx.AsyncClient(timeout=5.0) as c:
+                    await c.get(url)
+                return name, (time.time() - start) * 1000
+            except Exception as e:
+                return name, str(e)
+
+        async def _run_pings():
+            results = await asyncio.gather(
+                *[_ping(n, u) for n, u in targets.items()], return_exceptions=True
+            )
+            for res in results:
+                if isinstance(res, tuple):
+                    name, latency = res
+                    if isinstance(latency, (int, float)):
+                        console.print(f"  [green]{name}: {latency:.0f}ms[/green]")
+                    else:
+                        console.print(f"  [red]{name}: {latency}[/red]")
+
+        asyncio.run(_run_pings())
 
 
 @admin_app.command("migrate")
