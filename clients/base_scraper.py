@@ -104,7 +104,7 @@ class BaseScraper(ABC):
 
         if response.status_code == 429:
             self._failure_count += 1
-            if self._failure_count >= 3:
+            if self._failure_count >= 5:
                 self._disabled = True
             raise RateLimitedError(f"{source or self.source_name} returned 429")
 

@@ -15,7 +15,7 @@ class CircuitOpenError(Exception):
 
 class CircuitBreaker:
     def __init__(
-        self, name: str, threshold: int = 3, reset_timeout: int = 60
+        self, name: str, threshold: int = 5, reset_timeout: int = 60
     ):
         self.name = name
         self.threshold = threshold

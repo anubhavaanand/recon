@@ -61,8 +61,8 @@ def extract_patent_id(text: str) -> str | None:
     return None
 
 
-_ddg_breaker = CircuitBreaker(name="duckduckgo", threshold=3, reset_timeout=60)
-_google_breaker = CircuitBreaker(name="google_patents", threshold=3, reset_timeout=60)
+_ddg_breaker = CircuitBreaker(name="duckduckgo", threshold=5, reset_timeout=60)
+_google_breaker = CircuitBreaker(name="google_patents", threshold=5, reset_timeout=60)
 
 
 # ── Concrete scraper classes ──────────────────────────────────────────
