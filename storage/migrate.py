@@ -28,12 +28,50 @@ def migrate(db_path: str, target_version: str | None = None) -> list[str]:
     )
 
     current = get_current_version(conn)
+
+    # Bootstrap check: If the DB was initialized with the v0.2.0 schema directly,
+    # we can set current version to '0.2.0' to prevent executing legacy migration scripts.
+    if current == "0.0.0":
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='api_metadata'"
+            ).fetchone()
+            if row and row[0] > 0:
+                conn.execute(
+                    "INSERT OR REPLACE INTO schema_version (version) VALUES ('0.2.0')"
+                )
+                conn.commit()
+                current = "0.2.0"
+        except Exception:
+            pass
+
     applied: list[str] = []
 
     for version, filename in MIGRATIONS:
         if version > current:
             if target_version and version > target_version:
                 break
+
+            # Special check for v0.2.0: if api_metadata already exists,
+            # we don't need to run v0_2_0_gaps.sql because the DB is already
+            # at or beyond v0.2.0 structure.
+            if version == "0.2.0":
+                try:
+                    row = conn.execute(
+                        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='api_metadata'"
+                    ).fetchone()
+                    if row and row[0] > 0:
+                        conn.execute(
+                            "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
+                            (version,),
+                        )
+                        conn.commit()
+                        applied.append(version)
+                        current = version
+                        continue
+                except Exception:
+                    pass
+
             sql_path = MIGRATIONS_DIR / filename
             if not sql_path.exists():
                 continue
