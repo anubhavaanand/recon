@@ -12,6 +12,7 @@ from tui.widgets.info_tab import InfoTab
 from tui.widgets.claims_tab import ClaimsTab
 from tui.widgets.image_tab import ImageTab, detect_terminal_protocol, TerminalProtocol
 from tui.widgets.citation_tree import CitationTree
+from tui.widgets.command_palette import CommandPalette
 from core.search import search_all, ALL_SOURCES, SOURCE_REGISTRY
 from core.intelligence import SynthesisEngine
 from storage.cache import CacheDatabase
@@ -580,6 +581,8 @@ class SearchScreen(Screen):
         yield Static("RECON  ─────────────────────────────────────────", id="status_top")
         # Search input
         yield Input(placeholder='Search patents... ("sulfide electrolyte solid state battery")', id="search_input")
+        # Command palette (hidden by default, shown when typing /)
+        yield CommandPalette("", id="command_palette", classes="hidden")
         # Main two-column layout
         with Horizontal(id="main_horizontal"):
             yield ResultList(id="result_list")
@@ -597,7 +600,7 @@ class SearchScreen(Screen):
         yield Static("", id="source_filter_overlay", classes="hidden")
         # Bottom status bar
         yield Static(
-            "↑↓ nav  Enter:detail  h/l:tab  /:search  s:save  e:export  S:source  r:reader  ?:help  q:quit",
+            "↑↓ nav  Enter:detail  /:commands  s:save  e:export  S:source  r:reader  ?:help  q:quit",
             id="status_bottom"
         )
 
@@ -636,6 +639,14 @@ class SearchScreen(Screen):
                 pass
 
     def on_key(self, event) -> None:
+        # Command palette takes priority when active
+        palette = self.query_one("#command_palette", CommandPalette)
+        if palette.is_active:
+            handled = self._on_key_command_palette(event)
+            if handled:
+                event.stop()
+                return
+
         if self._show_source_filter:
             handled = self._on_key_source_filter(event)
             if handled:
@@ -655,6 +666,17 @@ class SearchScreen(Screen):
     def on_mount(self) -> None:
         self._set_active_tab("info")
         self.query_one("#search_input", Input).focus()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        value = event.value
+        palette = self.query_one("#command_palette", CommandPalette)
+        if value.startswith("/"):
+            palette.is_active = True
+            palette.remove_class("hidden")
+            palette.filter(value)
+        else:
+            palette.is_active = False
+            palette.add_class("hidden")
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         query = event.value.strip()
@@ -704,6 +726,22 @@ class SearchScreen(Screen):
             self.call_after_refresh(self._lazy_load_claims, record)
         elif tab == "image":
             self.call_after_refresh(self._lazy_load_image, record)
+
+        # Trigger background enrichment for the selected patent
+        self.call_after_refresh(self._enrich_current, record)
+
+    async def _enrich_current(self, record) -> None:
+        from core.enrichment import enrich_patent
+        # Check if already has cross_references
+        if record.cross_references:
+            return
+        try:
+            self.notify("⟳ Enriching...")
+            await enrich_patent(record)
+            self.query_one(InfoTab).update_record(record)
+            self.notify(f"Enrichment: {len(record.cross_references)} signals found")
+        except Exception:
+            pass
 
     async def _lazy_load_claims(self, record) -> None:
         await self.query_one(ClaimsTab).load_claims(record)
@@ -945,6 +983,61 @@ class SearchScreen(Screen):
 
     def action_focus_search(self) -> None:
         self.query_one("#search_input", Input).focus()
+
+    # ── Command palette methods ────────────────────────────
+    def _on_key_command_palette(self, event) -> bool:
+        palette = self.query_one("#command_palette", CommandPalette)
+        if event.key == "down":
+            palette.select_next()
+            return True
+        elif event.key == "up":
+            palette.select_prev()
+            return True
+        elif event.key == "enter":
+            action = palette.selected_action()
+            if action:
+                self._execute_command(action)
+            return True
+        elif event.key == "escape":
+            palette.is_active = False
+            palette.add_class("hidden")
+            self.query_one("#search_input", Input).value = ""
+            return True
+        return False
+
+    def _execute_command(self, action: str) -> None:
+        palette = self.query_one("#command_palette", CommandPalette)
+        palette.is_active = False
+        palette.add_class("hidden")
+        self.query_one("#search_input", Input).value = ""
+
+        action_map = {
+            "focus_search": lambda: self.query_one("#search_input", Input).focus(),
+            "export_collection": self.action_export_collection,
+            "save_collection": self.action_save_collection,
+            "reader_mode": self.action_reader_mode,
+            "show_citation_graph": self.action_show_citation_graph,
+            "translate": lambda: self.call_after_refresh(self.action_translate()),
+            "toggle_source_filter": self.action_toggle_source_filter,
+            "toggle_help": self.action_toggle_help,
+            "clear_search": self._clear_search,
+            "show_config": self._show_config,
+            "quit": self.app.exit,
+        }
+        handler = action_map.get(action)
+        if handler:
+            handler()
+
+    def _clear_search(self) -> None:
+        self.query_one("#search_input", Input).value = ""
+        self.query_one("#search_input", Input).focus()
+        self._results = []
+        self.query_one(ResultList).clear()
+        self.query_one("#status_top", Static).update("RECON  ─────────────────────────────────────────")
+        self.notify("Search cleared.")
+
+    def _show_config(self) -> None:
+        self.notify("Config: ~/.config/recon/config.toml  |  Run 'recon config --help'")
 
     async def action_translate(self) -> None:
         from core.translation import translate_text

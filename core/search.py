@@ -79,4 +79,10 @@ async def search_all(query: str, sources: Optional[List[str]] = None) -> List[Pa
     if merged:
         db.save_search_results(query, merged)
 
+    # Enrich top 5 results with cross-references (Constitution §6: Speed over Depth)
+    from core.enrichment import enrich_patent
+    top_n = merged[:5]
+    enrichment_tasks = [enrich_patent(r) for r in top_n]
+    await asyncio.gather(*enrichment_tasks, return_exceptions=True)
+
     return merged

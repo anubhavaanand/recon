@@ -47,6 +47,12 @@ CREATE TABLE IF NOT EXISTS translation_cache (
     translated_text TEXT,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS enrichment_cache (
+    patent_id TEXT PRIMARY KEY,
+    cross_refs_json TEXT,
+    enriched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 class CacheDatabase:
@@ -127,5 +133,29 @@ class CacheDatabase:
             conn.execute(
                 "INSERT OR REPLACE INTO search_results (query, results, timestamp, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                 (query, data)
+            )
+            conn.commit()
+
+    def get_enrichment_cache(self, patent_id: str) -> list[CrossReference] | None:
+        """Retrieve cached enrichment results if less than 7 days old."""
+        with self.get_connection() as conn:
+            row = conn.execute(
+                "SELECT cross_refs_json FROM enrichment_cache WHERE patent_id = ? AND enriched_at > datetime('now', '-7 days')",
+                (patent_id,)
+            ).fetchone()
+
+        if not row:
+            return None
+
+        data_list = json.loads(row["cross_refs_json"])
+        return [CrossReference(**cr) for cr in data_list]
+
+    def save_enrichment_cache(self, patent_id: str, refs: list[CrossReference]):
+        """Save enrichment results to the cache."""
+        with self.get_connection() as conn:
+            data = json.dumps([dataclasses.asdict(r) for r in refs])
+            conn.execute(
+                "INSERT OR REPLACE INTO enrichment_cache (patent_id, cross_refs_json, enriched_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                (patent_id, data)
             )
             conn.commit()

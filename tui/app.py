@@ -168,6 +168,23 @@ class ReconApp(App):
         display: none;
     }
 
+    /* ── Command palette (inline, / key) ── */
+    #command_palette {
+        width: 48;
+        height: auto;
+        max-height: 14;
+        background: #161b22;
+        color: #c9d1d9;
+        border: solid #58a6ff;
+        offset: 0 3;
+        layer: overlay;
+        padding: 0 1;
+        overflow-y: auto;
+    }
+    #command_palette.hidden {
+        display: none;
+    }
+
     /* ── Terminal detection screen ── */
     TerminalDetectionScreen {
         align: center middle;

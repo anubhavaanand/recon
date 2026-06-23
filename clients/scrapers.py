@@ -59,6 +59,29 @@ def _parse_google_patent_html(html: str) -> dict | None:
     status_el = soup.select_one("[itemprop='status'], .status, .legal-status")
     status = status_el.get_text(strip=True) if status_el else "UNKNOWN"
 
+    claims: list[str] = []
+    claim_els = soup.select("[itemprop='claims'], .patent-claims")
+    for ce in claim_els:
+        text = ce.get_text(strip=True)
+        if text:
+            claims.append(text)
+        if len(claims) >= 10:
+            break
+    if not claims:
+        claims = []
+
+    image_urls: list[str] = []
+    img_uri_el = soup.select_one("[itemprop='representativePublicationFigureUri']")
+    if img_uri_el:
+        src = img_uri_el.get("src") or img_uri_el.get("href") or img_uri_el.get_text(strip=True)
+        if src:
+            image_urls.append(src)
+    if not image_urls:
+        for img in soup.select("img.patent-image"):
+            src = img.get("src")
+            if src:
+                image_urls.append(src)
+
     return {
         "id": pn or "UNKNOWN",
         "title": title,
@@ -66,6 +89,8 @@ def _parse_google_patent_html(html: str) -> dict | None:
         "abstract": abstract,
         "dates": {"filed": filed} if filed != "[?]" else {},
         "status": status[:20],
+        "claims": claims,
+        "image_urls": image_urls,
     }
 
 
@@ -90,12 +115,35 @@ def _parse_wipo_patent_html(html: str) -> dict | None:
     abstract_el = soup.select_one(".abstract, [id*='abstract']")
     abstract = abstract_el.get_text(strip=True) if abstract_el else "[?]"
 
+    # Parse publication and filing dates from meta tags or structured elements
+    filed = "[?]"
+    pub_date_el = soup.select_one(
+        "meta[name='pubDate'], meta[name='filingDate'], "
+        "[itemprop='filingDate'], [itemprop='datePublished'], "
+        ".publication-date, .filing-date, .date"
+    )
+    if pub_date_el:
+        d = pub_date_el.get("content") or pub_date_el.get_text(strip=True)
+        if d:
+            d = d[:10]
+            if re.match(r"\d{4}-\d{2}-\d{2}", d):
+                filed = d
+
+    if filed == "[?]":
+        # Fallback: look for any date-like text in the page
+        for tag in soup.find_all(["span", "td", "div"]):
+            text = tag.get_text(strip=True)
+            m = re.search(r"(\d{4}-\d{2}-\d{2})", text)
+            if m:
+                filed = m.group(1)
+                break
+
     return {
         "id": pn or "UNKNOWN",
         "title": title,
         "assignee": assignee,
         "abstract": abstract,
-        "dates": {},
+        "dates": {"filed": filed} if filed != "[?]" else {},
         "status": "UNKNOWN",
     }
 
@@ -129,8 +177,8 @@ async def _fetch_patents_from_urls(urls: list[str], parser_fn, timeout: float = 
             assignee=parsed["assignee"],
             dates=parsed["dates"],
             abstract=parsed["abstract"],
-            claims=[],
-            image_urls=[],
+            claims=parsed.get("claims", []),
+            image_urls=parsed.get("image_urls", []),
             status=parsed["status"],
             family_id="UNKNOWN",
         )
@@ -241,25 +289,26 @@ async def search_wipo_patents(query: str) -> List[PatentRecord]:
 
         abstract = snippet.strip() if snippet else "[?]"
 
-        # Try to fetch the detail page to get publication date
-        filed = "[?]"
+        # Try to fetch the detail page for richer data (assignee, dates)
+        parsed_assignee = "[?]"
+        parsed_dates: dict[str, str] = {"filed": "[?]"}
         try:
             html = await _fetch_html(href, timeout=6.0)
             if html:
-                soup = BeautifulSoup(html, "lxml")
-                date_el = soup.select_one("[id*='pubDate'], [id*='pubDate'], .publication-date, .date")
-                if date_el:
-                    d = date_el.get_text(strip=True)[:10]
-                    if d:
-                        filed = d
+                parsed = _parse_wipo_patent_html(html)
+                if parsed:
+                    if parsed.get("assignee") and parsed["assignee"] != "[?]":
+                        parsed_assignee = parsed["assignee"]
+                    if parsed.get("dates"):
+                        parsed_dates = parsed["dates"]
         except Exception:
             pass
 
         records.append(PatentRecord(
             id=pid,
             title=title,
-            assignee="[?]",
-            dates={"filed": filed},
+            assignee=parsed_assignee,
+            dates=parsed_dates,
             abstract=abstract,
             claims=["[?]"],
             image_urls=["[?]"],
@@ -287,6 +336,9 @@ async def search_lens_patents(query: str) -> List[PatentRecord]:
     records: list[PatentRecord] = []
     seen_ids: set[str] = set()
 
+    # Patent number pattern: e.g. US12345678B2, EP1234567, WO2020123456
+    _PATENT_NUM_RE = re.compile(r"[A-Z]{2}\d{4,}[A-Z0-9]{0,3}")
+
     for r in results:
         href = r.get("href", "")
         if "lens.org/lens/patent/" not in href:
@@ -303,16 +355,45 @@ async def search_lens_patents(query: str) -> List[PatentRecord]:
 
         if not pid or pid in seen_ids:
             continue
-        seen_ids.add(pid)
 
-        title = title_raw.strip() if title_raw else "[?]"
+        # Try to replace Lens internal ID with actual patent number
+        actual_pn = None
+        for text in [title_raw, snippet]:
+            if text:
+                m2 = _PATENT_NUM_RE.search(text)
+                if m2:
+                    actual_pn = m2.group(0)
+                    break
+        final_id = actual_pn if actual_pn else pid
+        seen_ids.add(final_id)
+
+        # Parse dates from snippet text
+        filed = "[?]"
+        if snippet:
+            dm = re.search(r"(\d{4}-\d{2}-\d{2})", snippet)
+            if dm:
+                filed = dm.group(1)
+
+        # Parse assignee from title: "Patent Title - Assignee Name"
+        assignee = "[?]"
+        title_clean = title_raw.strip() if title_raw else "[?]"
+        for sep in [" — ", " - ", " – "]:
+            parts = title_clean.split(sep, 1)
+            if len(parts) == 2:
+                potential_assignee = parts[1].strip()
+                # Avoid treating other metadata as assignee
+                if potential_assignee and not _PATENT_NUM_RE.fullmatch(potential_assignee):
+                    assignee = potential_assignee
+                    title_clean = parts[0].strip()
+                    break
+
         abstract = snippet.strip() if snippet else "[?]"
 
         records.append(PatentRecord(
-            id=pid,
-            title=title,
-            assignee="[?]",
-            dates={"filed": "[?]"},
+            id=final_id,
+            title=title_clean,
+            assignee=assignee,
+            dates={"filed": filed},
             abstract=abstract,
             claims=["[?]"],
             image_urls=["[?]"],
@@ -380,5 +461,56 @@ async def search_epo_patents(query: str) -> List[PatentRecord]:
             status="UNKNOWN",
             family_id="UNKNOWN",
         ))
+
+    # Second-pass: deep-fetch each patent page for richer data
+    if records:
+        for rec in records:
+            try:
+                ep_num = rec.id
+                if ep_num.startswith("EP"):
+                    ep_num = ep_num[2:]
+                ep_url = f"https://register.epo.org/application?number=EP{ep_num}"
+                html = await _fetch_html(ep_url, timeout=8.0)
+                if not html:
+                    continue
+                soup = BeautifulSoup(html, "lxml")
+
+                # Title
+                title_el = soup.select_one("h1, .page-title")
+                if title_el:
+                    t = title_el.get_text(strip=True)
+                    if t:
+                        rec.title = t
+
+                # Applicant / Assignee
+                applicant_el = soup.select_one(".applicant, [id*='applicant']")
+                if not applicant_el:
+                    for td in soup.find_all("td"):
+                        if "applicant" in td.get_text(strip=True).lower():
+                            sibling = td.find_next("td")
+                            if sibling:
+                                applicant_el = sibling
+                            break
+                if applicant_el:
+                    a = applicant_el.get_text(strip=True)
+                    if a:
+                        rec.assignee = a
+
+                # Abstract
+                abstract_el = soup.select_one(".abstract, [id*='abstract'], .patent-abstract")
+                if abstract_el:
+                    ab = abstract_el.get_text(strip=True)
+                    if ab:
+                        rec.abstract = ab
+
+                # Filing date — look for any date-like text
+                date_texts = soup.get_text()
+                dm = re.search(r"(\d{4}-\d{2}-\d{2})", date_texts)
+                if not dm:
+                    dm = re.search(r"(\d{2}\.\d{2}\.\d{4})", date_texts)
+                if dm:
+                    rec.dates["filed"] = dm.group(1)[:10]
+            except Exception:
+                continue
 
     return records
