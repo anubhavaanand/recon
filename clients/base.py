@@ -33,6 +33,7 @@ class BaseAsyncClient:
             if response.status_code in (429, 503, 504):
                 if attempt < max_retries:
                     delay = backoff_delays[attempt]
+                    print(f"ERR: API rate limited ({response.status_code}). Retrying in {delay}s...")
                     await asyncio.sleep(delay)
                     continue
                 else:

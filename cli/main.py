@@ -234,7 +234,7 @@ def export(
     records = db.get_collection()
     
     if not records:
-        typer.echo("ERR: Collection is empty. No records to export.")
+        typer.echo("ERR: Collection is empty. Save patents with 's' first.")
         raise typer.Exit(code=1)
 
     output_path = output if output else f"collection_export.{format.lower()}"

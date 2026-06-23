@@ -608,6 +608,8 @@ class SearchScreen(Screen):
         ("g",          "jump_to_top",           "Top"),
         ("G",          "jump_to_bottom",        "Bottom"),
         ("a",          "toggle_assignee_view",  "Assignee Portfolio"),
+        ("w",          "toggle_sort",           "Sort & Weights"),
+        ("x",          "toggle_semantic",       "Semantic Search"),
         ("q",          "dismiss_or_quit",       "Quit"),
     ]
 
@@ -630,6 +632,10 @@ class SearchScreen(Screen):
         self._show_assignee_view = False
         self._assignee_portfolios: dict[str, list] = {}
         self._input_error = False
+        self._show_sort = False
+        self._sort_selected = 0
+        self._sort_mode = "relevance"
+        self._semantic_enabled = False
 
     def compose(self) -> ComposeResult:
         # Top status bar
@@ -653,11 +659,13 @@ class SearchScreen(Screen):
         yield Static("", id="export_overlay", classes="hidden")
         # Source filter overlay (hidden by default)
         yield Static("", id="source_filter_overlay", classes="hidden")
+        # Sort overlay (hidden by default)
+        yield Static("", id="sort_overlay", classes="hidden")
         # Assignee Portfolio View overlay (hidden by default)
         yield Static("", id="assignee_overlay", classes="hidden")
         # Bottom status bar
         yield Static(
-            "↑↓ nav  g/G:top/bottom  Enter:detail  /:commands  s:save  e:export  a:assignee  ?:help  q:quit",
+            "↑↓ nav  Enter:detail  /:cmds  s:save  e:export  a:assignee  w:sort  x:semantic  ?:help  q:quit",
             id="status_bottom"
         )
 
@@ -724,6 +732,12 @@ class SearchScreen(Screen):
 
         if self._show_export:
             handled = self._on_key_export_overlay(event)
+            if handled:
+                event.stop()
+                return
+
+        if self._show_sort:
+            handled = self._on_key_sort_overlay(event)
             if handled:
                 event.stop()
                 return
@@ -813,9 +827,17 @@ class SearchScreen(Screen):
         if self._active_sources and len(self._active_sources) < len(ALL_SOURCES):
             active_names = [SOURCE_REGISTRY[s][0] for s in sorted(self._active_sources)]
             src_info = f"  │  sources: {','.join(active_names)}"
-        self.query_one("#status_top", Static).update(
-            f"RECON  ──  \"{escape(query)}\"  │  {count} results{src_info}"
-        )
+            
+        semantic_info = "  │  [Semantic]" if self._semantic_enabled else ""
+            
+        if count == 0:
+            self.query_one("#status_top", Static).update(
+                "ERR: No patents found. Try: 'battery' or 'solid state'"
+            )
+        else:
+            self.query_one("#status_top", Static).update(
+                f"RECON  ──  \"{escape(query)}\"  │  {count} results{src_info}{semantic_info}  │  sort: {self._sort_mode}"
+            )
 
         if self._results:
             result_list.index = 0
@@ -1107,6 +1129,101 @@ class SearchScreen(Screen):
             return True
         return False
 
+    # ── Sort Overlay ──────────────────────────────────
+    def _render_sort_overlay(self) -> str:
+        lines = [
+            "┌─ Sort & Weights ───────────────────────────┐",
+            "│                                            │",
+        ]
+        options = ["relevance", "date", "assignee", "citation count", "custom (+30 citations)"]
+        for i, opt in enumerate(options):
+            marker = "●" if opt == self._sort_mode else " "
+            sel = "→" if i == self._sort_selected else " "
+            lines.append(f"│ {sel}[{marker}] {opt:<34}│")
+        lines += [
+            "│                                            │",
+            "│  ↑/↓ select  Enter confirm  Esc cancel     │",
+            "└────────────────────────────────────────────┘",
+        ]
+        return "\n".join(lines)
+
+    def _show_sort_overlay(self) -> None:
+        self._show_sort = True
+        self._sort_selected = 0
+        overlay = self.query_one("#sort_overlay", Static)
+        overlay.update(self._render_sort_overlay())
+        overlay.remove_class("hidden")
+
+    def _hide_sort_overlay(self) -> None:
+        self._show_sort = False
+        overlay = self.query_one("#sort_overlay", Static)
+        overlay.add_class("hidden")
+
+    def action_toggle_sort(self) -> None:
+        self._show_sort_overlay()
+
+    def _on_key_sort_overlay(self, event) -> bool:
+        options = ["relevance", "date", "assignee", "citation count", "custom (+30 citations)"]
+        if event.key == "up":
+            self._sort_selected = (self._sort_selected - 1) % len(options)
+            self.query_one("#sort_overlay", Static).update(self._render_sort_overlay())
+            return True
+        elif event.key == "down":
+            self._sort_selected = (self._sort_selected + 1) % len(options)
+            self.query_one("#sort_overlay", Static).update(self._render_sort_overlay())
+            return True
+        elif event.key == "enter":
+            self._sort_mode = options[self._sort_selected]
+            self._hide_sort_overlay()
+            self.app.notify(f"Sort mode changed to: {self._sort_mode}")
+            self._apply_sort()
+            return True
+        elif event.key == "escape":
+            self._hide_sort_overlay()
+            return True
+        return False
+
+    def _apply_sort(self) -> None:
+        if not self._results:
+            return
+            
+        if self._sort_mode == "date":
+            self._results.sort(key=lambda r: r.dates.get("filed", "[?]"), reverse=True)
+        elif self._sort_mode == "assignee":
+            self._results.sort(key=lambda r: r.assignee or "")
+        elif self._sort_mode == "citation count":
+            # For mockup, just sort by score
+            self._results.sort(key=lambda r: len(r.cross_references) if r.cross_references else 0, reverse=True)
+        else: # relevance or custom
+            from core.scoring import calculate_signal_score
+            self._results.sort(key=lambda r: calculate_signal_score(r.cross_references), reverse=True)
+            
+        result_list = self.query_one(ResultList)
+        result_list.clear()
+        for i, record in enumerate(self._results, 1):
+            result_list.mount(ResultListItem(record, i))
+        
+        self.query_one("#status_top", Static).update(
+            self.query_one("#status_top", Static).renderable.replace(f"sort: {self._sort_mode}", "") + f"sort: {self._sort_mode}"
+        )
+        if self._results:
+            result_list.index = 0
+            self._load_record(self._results[0])
+            result_list.focus()
+
+    def action_toggle_semantic(self) -> None:
+        self._semantic_enabled = not self._semantic_enabled
+        state = "enabled" if self._semantic_enabled else "disabled"
+        self.app.notify(f"Semantic Search {state}")
+        
+        # update top bar
+        top = self.query_one("#status_top", Static)
+        text = str(top.renderable)
+        if self._semantic_enabled and "[Semantic]" not in text:
+            top.update(text.replace("results", "results  │  [Semantic]"))
+        elif not self._semantic_enabled and "[Semantic]" in text:
+            top.update(text.replace("  │  [Semantic]", ""))
+
     # ── Overlay dismissal ─────────────────────────────
 
     def _dismiss_active_overlay(self) -> bool:
@@ -1116,6 +1233,9 @@ class SearchScreen(Screen):
             return True
         if self._show_source_filter:
             self._hide_source_filter_overlay()
+            return True
+        if self._show_sort:
+            self._hide_sort_overlay()
             return True
         if self._show_help:
             self.action_toggle_help()
