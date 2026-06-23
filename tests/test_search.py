@@ -136,3 +136,45 @@ def test_is_clean_url():
     assert is_clean_url("https://duckduckgo.com/y.js?ad_domain=patents.google.com", "patents.google.com") is False
     assert is_clean_url(None, "lens.org") is False
     assert is_clean_url("", "lens.org") is False
+
+
+def test_extract_patent_id():
+    from clients.scrapers import extract_patent_id
+    assert extract_patent_id("US 11,000,000 B2 - battery patent") == "US11000000B2"
+    assert extract_patent_id("EP 1 234 567 A1") == "EP1234567A1"
+    assert extract_patent_id("WO-2020-123456-A1") == "WO2020123456A1"
+    assert extract_patent_id("some random text") is None
+
+
+@pytest.mark.asyncio
+async def test_lens_id_resolution(monkeypatch):
+    from clients.scrapers import LensScraper
+    class MockResponse:
+        status_code = 200
+        text = "<html><title>US 11,000,000 B2 - Novel Battery</title></html>"
+        
+    async def mock_get(*args, **kwargs):
+        return MockResponse()
+        
+    monkeypatch.setattr("httpx.AsyncClient.get", mock_get)
+    
+    from core.models import PatentRecord
+    async def mock_gp_fetch(self, patent_id):
+        return PatentRecord(
+            id=patent_id,
+            title="Resolved Patent",
+            assignee="Acme Corp",
+            dates={"filed": "2020-01-01"},
+            abstract="AB",
+            claims=[],
+            image_urls=[],
+            status="Active",
+            family_id="F123"
+        )
+    monkeypatch.setattr("clients.scrapers.GooglePatentsScraper.fetch", mock_gp_fetch)
+    
+    scraper = LensScraper()
+    record = await scraper.fetch("039-653-535-961-827")
+    assert record is not None
+    assert record.id == "US11000000B2"
+    assert record.title == "Resolved Patent"

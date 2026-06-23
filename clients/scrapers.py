@@ -46,6 +46,21 @@ def is_clean_url(url: str, target_domain: str) -> bool:
         return False
 
 
+def extract_patent_id(text: str) -> str | None:
+    if not text:
+        return None
+    # Match standard or spaced country codes and patent number combinations
+    m = re.search(r'\b(US|EP|WO|JP|CN|KR|DE|FR|GB)\s*[-/,\s]*\s*([0-9\s/,-]{4,15})\s*([A-Z0-9]{0,3})\b', text, re.IGNORECASE)
+    if m:
+        country = m.group(1).upper()
+        num_part = m.group(2)
+        kind = m.group(3).upper() if m.group(3) else ""
+        num_clean = re.sub(r'[^0-9]', '', num_part)
+        if len(num_clean) >= 4:
+            return f"{country}{num_clean}{kind}"
+    return None
+
+
 _ddg_breaker = CircuitBreaker(name="duckduckgo", threshold=3, reset_timeout=60)
 _google_breaker = CircuitBreaker(name="google_patents", threshold=3, reset_timeout=60)
 
@@ -212,7 +227,62 @@ class LensScraper(BaseScraper):
         super().__init__(source_name="lens")
 
     async def fetch(self, patent_id: str) -> PatentRecord | None:
-        return None
+        if not patent_id:
+            return None
+
+        # If it's a Lens ID (e.g. contains dashes, like 039-653-535-961-827)
+        resolved_id = None
+        if "-" in patent_id and patent_id.count("-") == 4:
+            url = f"https://www.lens.org/lens/patent/{patent_id}"
+            try:
+                from clients.base import BaseAsyncClient
+                from clients.base_scraper import ROTATING_USER_AGENTS
+                client = BaseAsyncClient(base_url="https://www.lens.org")
+                headers = {"User-Agent": random.choice(ROTATING_USER_AGENTS)}
+                async with _DDG_SEMAPHORE:
+                    await asyncio.sleep(random.uniform(1.0, 3.0))
+                    client_session = await client.get_client()
+                    response = await client_session.get(url, headers=headers, follow_redirects=True)
+                if response.status_code == 200:
+                    resolved_id = self._extract_id_from_html(response.text)
+            except Exception as e:
+                logger.warning(f"Failed to resolve Lens ID {patent_id} via page fetch: {e}")
+
+        target_id = resolved_id if resolved_id else patent_id
+        if target_id and not ("-" in target_id and target_id.count("-") == 4):
+            from clients.scrapers import GooglePatentsScraper
+            return await GooglePatentsScraper().fetch(target_id)
+
+        return PatentRecord(
+            id=patent_id,
+            title="Unresolved Lens Patent",
+            assignee="UNKNOWN",
+            dates={"filed": "[?]"},
+            abstract="[?]",
+            claims=["[?]"],
+            image_urls=["[?]"],
+            status="UNKNOWN",
+            family_id="UNKNOWN"
+        )
+
+    def _extract_id_from_html(self, html: str) -> str | None:
+        soup = BeautifulSoup(html, "lxml")
+        # Check meta tags
+        for name in ["citation_patent_number", "dc.relation.patent", "dc.identifier"]:
+            meta = soup.find("meta", {"name": name}) or soup.find("meta", {"property": name})
+            if meta and meta.get("content"):
+                val = meta.get("content").strip()
+                if val:
+                    return re.sub(r'[\s_\-]', '', val).upper()
+
+        # Check title tag
+        if soup.title and soup.title.string:
+            pn = extract_patent_id(soup.title.string)
+            if pn:
+                return pn
+
+        # Fallback to search body
+        return extract_patent_id(html)
 
     async def search(self, query: str) -> List[PatentRecord]:
         query = sanitize_query(query)
@@ -226,7 +296,6 @@ class LensScraper(BaseScraper):
 
         records: list[PatentRecord] = []
         seen_ids: set[str] = set()
-        _PATENT_NUM_RE = re.compile(r"[A-Z]{2}\d{4,}[A-Z0-9]{0,3}")
 
         for r in results:
             href = r.get("href", "")
@@ -249,9 +318,9 @@ class LensScraper(BaseScraper):
             actual_pn = None
             for text in [title_raw, snippet]:
                 if text:
-                    m2 = _PATENT_NUM_RE.search(text)
-                    if m2:
-                        actual_pn = re.sub(r'\s+', '', m2.group(0))
+                    pn = extract_patent_id(text)
+                    if pn:
+                        actual_pn = pn
                         break
             final_id = actual_pn if actual_pn else pid
             seen_ids.add(final_id)
@@ -268,7 +337,7 @@ class LensScraper(BaseScraper):
                 parts = title_clean.split(sep, 1)
                 if len(parts) == 2:
                     potential_assignee = parts[1].strip()
-                    if potential_assignee and not _PATENT_NUM_RE.fullmatch(potential_assignee):
+                    if potential_assignee and not (potential_assignee.count("-") == 4 or len(re.sub(r'[^0-9]', '', potential_assignee)) >= 4):
                         assignee = potential_assignee
                         title_clean = parts[0].strip()
                         break
