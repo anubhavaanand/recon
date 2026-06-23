@@ -5,6 +5,7 @@ from typing import List, Optional, Dict
 class CrossReference:
     source: str  # NIH, NSF, SEC, OpenAlex, arXiv, OpenCorporates
     url: str
+    date: Optional[str] = None  # ISO date string for temporal proximity scoring
     metadata: Dict = field(default_factory=dict)
     # Weight per signal. Default 1.0 meaning one equal signal.
     # Scoring code multiplies this by 20 to produce the final contribution.

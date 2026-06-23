@@ -3,6 +3,7 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Input, ListView, Static
 from textual.reactive import reactive
+from textual import work
 
 
 from rich.markup import escape
@@ -728,8 +729,9 @@ class SearchScreen(Screen):
             self.call_after_refresh(self._lazy_load_image, record)
 
         # Trigger background enrichment for the selected patent
-        self.call_after_refresh(self._enrich_current, record)
+        self._enrich_current(record)
 
+    @work(exclusive=True, group="enrichment")
     async def _enrich_current(self, record) -> None:
         from core.enrichment import enrich_patent
         # Check if already has cross_references

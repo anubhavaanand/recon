@@ -95,3 +95,34 @@ async def test_search_all_returns_list():
         mock.return_value = [_make_record("1", "2023-01-01")]
         result = await search_all("test")
         assert len(result) > 0
+
+
+# ── Input sanitization ────────────────────────────────────
+
+def test_sanitize_removes_shell_chars():
+    from core.search import sanitize_query
+    assert sanitize_query("hello; rm -rf /") == "hello rm -rf /"
+    assert sanitize_query("query | whoami") == "query whoami"
+    assert sanitize_query("foo & bar") == "foo bar"
+    assert sanitize_query("$(dangerous)") == "dangerous"
+    assert sanitize_query("`backtick`") == "backtick"
+
+
+def test_sanitize_removes_cql_injection():
+    from core.search import sanitize_query
+    assert sanitize_query("*:*") == ""
+    assert sanitize_query("query *:*") == "query"
+
+
+def test_sanitize_preserves_normal_queries():
+    from core.search import sanitize_query
+    assert sanitize_query("solid state battery") == "solid state battery"
+    assert sanitize_query('"quantum computing"') == '"quantum computing"'
+    assert sanitize_query("batter*") == "batter*"
+    assert sanitize_query("USPTO-123456") == "USPTO-123456"
+
+
+def test_sanitize_strips_whitespace():
+    from core.search import sanitize_query
+    assert sanitize_query("  hello world  ") == "hello world"
+    assert sanitize_query("") == ""

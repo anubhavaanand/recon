@@ -11,18 +11,18 @@ def test_entity_matching():
 
 def test_equal_weight_scoring():
     assert calculate_signal_score([]) == 0
-    refs = [CrossReference(source="NIH", url="")]
-    assert calculate_signal_score(refs) == 20
+    refs = [CrossReference(source="NIH", url="", date="2021-06-15")]
+    assert calculate_signal_score(refs, filing_date="2022-06-15") == 40  # grant + temporal
     refs = [
-        CrossReference(source="NIH", url=""),
+        CrossReference(source="NIH", url="", date="2021-06-15"),
         CrossReference(source="SEC", url=""),
-        CrossReference(source="OpenAlex", url=""),
+        CrossReference(source="OpenAlex", url="", date="2021-06-15"),
         CrossReference(source="opencorporates", url=""),
     ]
-    score = calculate_signal_score(refs)
+    score = calculate_signal_score(refs, filing_date="2022-06-15")
     assert score == 100
     refs.append(CrossReference(source="arXiv", url=""))
-    assert calculate_signal_score(refs) == 100
+    assert calculate_signal_score(refs, filing_date="2022-06-15") == 100
 
 
 def test_each_signal_individually_weighted_20():
@@ -93,7 +93,7 @@ def test_weigh_documentation():
         "corporate": {"sources": ["SEC", "EDGAR", "10-K", "8-K"], "weight": 20},
         "academic": {"sources": ["OpenAlex", "arXiv"], "weight": 20},
         "supply_chain": {"sources": ["OpenCorporates", "Supply Chain", "DUNS"], "weight": 20},
-        "temporal_proximity": {"sources": ["grant + academic co-occurrence"], "weight": 20},
+        "temporal_proximity": {"sources": ["cross-ref date within 2yr of filing date"], "weight": 20},
     }
     for signal_name, config in signals.items():
         assert config["weight"] == 20, f"Signal '{signal_name}' weight is {config['weight']}, expected 20"

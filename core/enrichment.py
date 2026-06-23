@@ -9,9 +9,10 @@ the scoring engine uses to calculate signal scores.
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Optional
 
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 
 from core.models import PatentRecord, CrossReference
 from storage.cache import CacheDatabase
@@ -23,6 +24,8 @@ _SIGNAL_DOMAINS = {
     "sec": "site:sec.gov",
     "arxiv": "site:arxiv.org",
     "opencorporates": "site:opencorporates.com",
+    "nsf": "site:nsf.gov/awardsearch",
+    "doe": "site:osti.gov OR site:energy.gov",
 }
 
 # Words to skip when building a fallback query from title
@@ -30,6 +33,17 @@ _STOP_WORDS = frozenset({
     "a", "an", "the", "and", "or", "of", "in", "with", "for",
     "to", "is", "on", "by", "at", "from", "as", "that", "its",
 })
+
+
+_DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
+
+
+def _extract_date(text: str) -> Optional[str]:
+    """Extract the first ISO-format date from a string."""
+    if not text:
+        return None
+    m = _DATE_RE.search(text)
+    return m.group(1) if m else None
 
 
 async def _search_signal(source: str, domain_query: str, search_term: str) -> Optional[CrossReference]:
@@ -40,12 +54,14 @@ async def _search_signal(source: str, domain_query: str, search_term: str) -> Op
                 results = list(ddgs.text(f'{domain_query} "{search_term}"', max_results=1))
                 if results:
                     r = results[0]
+                    snippet = r.get("body", "")
                     return CrossReference(
                         source=source,
                         url=r.get("href", ""),
+                        date=_extract_date(snippet),
                         metadata={
                             "title": r.get("title", ""),
-                            "snippet": r.get("body", ""),
+                            "snippet": snippet,
                         },
                     )
             return None

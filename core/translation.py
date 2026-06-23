@@ -66,28 +66,26 @@ def _save_translation_cache(text: str, translated: str) -> None:
 
 
 async def translate_text(text: str, target_language: str = "English") -> str:
-    """Translate non-English text to target language via local Ollama.
+    """Translate non-English text to target language via DeepSeek or local Ollama.
 
-    Returns translated text, or original text if translation is not needed
-    or Ollama is unreachable. Never crashes — always returns a string.
+    Tries DeepSeek API if DEEPSEEK_API_KEY is configured; falls back to local
+    Ollama (llama3). Returns translated text with [t] prefix, or original text
+    if translation is not needed or all engines are unreachable.
+    Never crashes — always returns a string.
     """
     if not text or text in ("[?]", "UNKNOWN"):
         return text
 
-    # Skip if already translated (marked with [t] prefix)
     if text.startswith("[t]") or "\n\n[t]" in text:
         return text
 
-    # Skip English text
     if not _is_non_english(text):
         return text
 
-    # Check cache
     cached = _get_cached_translation(text)
     if cached:
         return f"[t]{cached}"
 
-    ollama_url = "http://localhost:11434/api/generate"
     prompt = (
         f"Translate the following patent text to {target_language}. "
         "Provide ONLY the translation, with no conversational filler, no apologies. "
@@ -95,32 +93,69 @@ async def translate_text(text: str, target_language: str = "English") -> str:
         f"Text:\n{text}"
     )
 
-    payload = {
-        "model": "llama3",
-        "prompt": prompt,
-        "stream": False,
-        "options": {"temperature": 0.0},
-    }
+    from core.config import load_config
+    cfg = load_config()
+    if cfg.deepseek_api_key:
+        translated = await _translate_via_deepseek(text, prompt, cfg.deepseek_api_key)
+        if translated is not None:
+            return f"[t]{translated}"
 
+    translated = await _translate_via_ollama(text, prompt)
+    if translated is not None:
+        return f"[t]{translated}"
+
+    return text
+
+
+async def _translate_via_deepseek(text: str, prompt: str, api_key: str) -> str | None:
+    """Translate via DeepSeek API (deepseek-chat). Returns None on failure."""
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(ollama_url, json=payload)
+            response = await client.post(
+                "https://api.deepseek.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "deepseek-chat",
+                    "messages": [
+                        {"role": "user", "content": prompt},
+                    ],
+                    "temperature": 0.0,
+                    "stream": False,
+                },
+            )
+            if response.status_code == 200:
+                data = response.json()
+                content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                if content:
+                    _save_translation_cache(text, content)
+                    return content
+            return None
+    except Exception:
+        return None
+
+
+async def _translate_via_ollama(text: str, prompt: str) -> str | None:
+    """Translate via local Ollama (llama3). Returns None on failure."""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                "http://localhost:11434/api/generate",
+                json={
+                    "model": "llama3",
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"temperature": 0.0},
+                },
+            )
             if response.status_code == 200:
                 data = response.json()
                 translated = data.get("response", "").strip()
                 if translated:
                     _save_translation_cache(text, translated)
-                    return f"[t]{translated}"
-
-                return text
-
-            if response.status_code == 404:
-                return text
-
-            return text
-
-    except (httpx.ConnectError, httpx.TimeoutException):
-        # Ollama not running — silently return original
-        return text
+                    return translated
+            return None
     except Exception:
-        return text
+        return None

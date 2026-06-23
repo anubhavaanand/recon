@@ -1,29 +1,41 @@
 # RECON -- Technical Architecture Document
-## Terminal-Native Patent Research Tool
+## Terminal-Native Patent Research Tool (Web-Scraper Default Architecture)
 
-**Version:** 1.0.0  
-**Date:** 2026-06-21  
-**Author:** Senior Software Architect  
-**Status:** Production (v0.2.0)  
+**Version:** 2.0.0  
+**Date:** 2026-06-23  
+**Author:** Lead Technical Architect  
+**Status:** Architecture Pivot (v2.0.0)  
 **Deployment Target:** PyPI package (local installation)  
-**Scale Expectation:** Single-user, personal workstation; ~10-100 API requests/day per user
+**Scale Expectation:** Single-user, personal workstation; ~10-100 queries/day per user
 
 ---
 
 ## 1. System Overview & Goals
 
-RECON is a **single-user, local-first, terminal-native application** for patent research. It is not a web service, SaaS platform, or client-server architecture. The entire application runs as a single Python process on the user's machine, making concurrent HTTP requests to external patent APIs, caching results locally in SQLite, and rendering output either as rich terminal tables (CLI mode) or as an interactive Textual TUI.
+RECON is a **single-user, local-first, terminal-native application** for patent research. It is not a web service, SaaS platform, or client-server architecture. The entire application runs as a single Python process on the user's machine, making concurrent HTTP requests to **web-scraped sources by default** (DuckDuckGo, Google Patents), caching results aggressively in SQLite, and rendering output either as rich terminal tables (CLI mode) or as an interactive Textual TUI.
 
 ### Architectural Goals
 
 | Goal | Priority | Rationale |
 |------|----------|-----------|
-| **Zero-latency local operation** | P0 | No network round-trip to a backend server; user types query, results appear in terminal immediately from cache or direct API calls |
-| **Zero recurring cost** | P0 | No infrastructure to host; user installs via `pip`, runs locally, uses free patent APIs |
+| **Zero-latency local operation** | P0 | No network round-trip to a backend server; user types query, results appear in terminal immediately from aggressive SQLite cache |
+| **Zero recurring cost** | P0 | No infrastructure to host; user installs via `pip`, runs locally; primary sources are free (scraped), APIs are optional |
 | **Deterministic reproducibility** | P0 | Same query -> same results -> same ordering, every time, on every machine |
 | **Zero-AI default** | P0 | No opaque ML ranking; transparent scoring algorithm auditable in source code |
+| **Scraper resilience** | P0 | Aggressive caching, randomized delays, rotating User-Agents, limited concurrency -- all mandatory for web-scraper sources |
 | **Minimal dependency footprint** | P1 | `pip install recon` pulls only essential packages; no Docker, no Node.js, no PostgreSQL |
 | **Offline resilience** | P1 | 30-day cache allows full search history and saved collections without network |
+
+### Architecture Pattern: **Layered Monolith (Local Process)**
+
+RECON follows a strict layered architecture within a single OS process:
+
+1. **Presentation Layer:** Typer (CLI) + Textual (TUI)
+2. **Application Layer:** Search orchestration, export logic, config management
+3. **Domain Layer:** Patent models, scoring algorithm, cross-reference intelligence
+4. **Infrastructure Layer:** HTTP scraping clients, optional API clients, SQLite cache, file system exports
+
+There are no network boundaries between layers. All communication is in-process Python function calls.
 
 ### What This Is NOT
 
@@ -59,14 +71,18 @@ flowchart TB
             Config["Config Manager<br/>core/config.py"]
         end
 
-        subgraph Client_Layer["External API Clients"]
-            BaseClient["Base HTTP Client<br/>clients/base.py"]
-            USPTO["USPTOClient<br/>clients/patent_apis.py"]
-            WIPO["WIPOClient<br/>clients/patent_apis.py"]
-            EPO["EPOClient (OAuth)<br/>clients/patent_apis.py"]
-            Google["GooglePatentsClient<br/>clients/patent_apis.py"]
-            Lens["LensOrgClient<br/>clients/patent_apis.py"]
+        subgraph Scraper_Layer["Default Scraper Clients (Phase 1)"]
+            BaseScraper["Base Scraper<br/>clients/base_scraper.py"]
+            DDG["DuckDuckGo Client<br/>clients/scrapers.py<br/>(via duckduckgo_search)"]
+            Google["Google Patents Client<br/>clients/scrapers.py<br/>(via beautifulsoup4)"]
+            WIPO["WIPO Client<br/>clients/scrapers.py<br/>(mixed scrape/API)"]
+            USPTO["USPTO Client<br/>clients/scrapers.py<br/>(open API, no key)"]
             Intel["IntelligenceClient<br/>clients/intelligence.py"]
+        end
+
+        subgraph API_Layer["Optional API Clients (Phase 3)"]
+            EPO["EPOClient (OAuth)<br/>clients/patent_apis.py"]
+            Lens["LensOrgClient<br/>clients/patent_apis.py"]
         end
 
         subgraph Storage_Layer["Local Storage"]
@@ -77,11 +93,12 @@ flowchart TB
     end
 
     subgraph External["External Services (Rate-Limited)"]
+        DDG_SCRAPE["DuckDuckGo (scraped via ddgs)"]
+        GOOGLE_SCRAPE["Google Patents (scraped HTML)"]
+        WIPO_SCRAPE["WIPO PATENTSCOPE"]
         USPTO_API["USPTO Open Data Portal"]
-        WIPO_API["WIPO PATENTSCOPE"]
-        EPO_API["EPO Open Patent Services"]
-        GOOGLE_API["Google Patents (Unofficial)"]
-        LENS_API["Lens.org API"]
+        EPO_API["EPO Open Patent Services (opt-in)"]
+        LENS_API["Lens.org API (opt-in)"]
         NIH["NIH RePORTER"]
         NSF["NSF Awards"]
         SEC["SEC EDGAR"]
@@ -100,27 +117,29 @@ flowchart TB
     ReaderScreen --> Models
 
     SearchEngine --> Scoring
-    SearchEngine --> Client_Layer
+    SearchEngine --> Scraper_Layer
+    SearchEngine --> API_Layer
     SearchEngine --> SQLite
     Scoring --> Models
     Config --> ConfigFile
 
-    BaseClient --> USPTO
-    BaseClient --> WIPO
-    BaseClient --> EPO
-    BaseClient --> Google
-    BaseClient --> Lens
+    BaseScraper --> DDG
+    BaseScraper --> Google
+    BaseScraper --> WIPO
+    BaseScraper --> USPTO
+    DDG --> DDG_SCRAPE
+    Google --> GOOGLE_SCRAPE
+    WIPO --> WIPO_SCRAPE
     USPTO --> USPTO_API
-    WIPO --> WIPO_API
-    EPO --> EPO_API
-    Google --> GOOGLE_API
-    Lens --> LENS_API
     Intel --> NIH
     Intel --> NSF
     Intel --> SEC
     Intel --> OPENALEX
     Intel --> ARXIV
     Intel --> OPENCORP
+
+    EPO --> EPO_API
+    Lens --> LENS_API
 
     SearchEngine --> SQLite
     Widgets --> SQLite
@@ -130,18 +149,11 @@ flowchart TB
     style External fill:#0f3460,stroke:#16213e,stroke-width:2px,color:#fff
     style SQLite fill:#e94560,stroke:#16213e,stroke-width:2px,color:#fff
     style ConfigFile fill:#e94560,stroke:#16213e,stroke-width:2px,color:#fff
+    style Scraper_Layer fill:#2d6a4f,stroke:#1b4332,stroke-width:2px,color:#fff
+    style API_Layer fill:#7b2d26,stroke:#5c1a15,stroke-width:2px,color:#fff
 ```
 
-### Architecture Pattern: **Layered Monolith (Local Process)**
-
-RECON follows a strict layered architecture within a single OS process:
-
-1. **Presentation Layer:** Typer (CLI) + Textual (TUI)
-2. **Application Layer:** Search orchestration, export logic, config management
-3. **Domain Layer:** Patent models, scoring algorithm, cross-reference intelligence
-4. **Infrastructure Layer:** HTTP clients, SQLite cache, file system exports
-
-There are no network boundaries between layers. All communication is in-process Python function calls.
+**Layout Note:** The green `Scraper_Layer` block contains the **default** intelligence engines (Phase 1). The red `API_Layer` block contains **opt-in** power-user API clients (Phase 3). Users without API keys operate entirely within the scraper layer.
 
 ---
 
@@ -181,7 +193,7 @@ There are no network boundaries between layers. All communication is in-process 
 
 | Module | Responsibility | Key Classes/Functions |
 |--------|---------------|----------------------|
-| `core/search.py` | Search orchestration: dispatch to APIs, aggregate, sort, deduplicate | `search_patents()`, `sort_and_merge_results()` |
+| `core/search.py` | Search orchestration: dispatch to scrapers/APIs, aggregate, sort, deduplicate | `search_patents()`, `sort_and_merge_results()` |
 | `core/scoring.py` | Deterministic cross-reference scoring | `calculate_score()`, `entity_match()` |
 | `core/models.py` | Domain models: PatentRecord, CrossReference | `PatentRecord` (dataclass), `CrossReference` (dataclass) |
 | `core/config.py` | TOML config read/write | `Config.load()`, `Config.save()` |
@@ -191,18 +203,22 @@ There are no network boundaries between layers. All communication is in-process 
 
 **Architectural Decision:** Pure Python `dataclasses` are used instead of Pydantic or `attrs` to eliminate a dependency. The constitution mandates minimal dependencies. Type hints provide static analysis benefits without runtime overhead.
 
-### 3.4 External API Clients (`clients/`)
+### 3.4 Default Scraper Clients (`clients/`)
 
 | Module | Responsibility | Key Classes |
 |--------|---------------|-------------|
-| `clients/base.py` | Shared `httpx.AsyncClient`, backoff logic, rate limiting | `BaseClient`, `get_with_backoff()` |
-| `clients/patent_apis.py` | Source-specific clients: USPTO, EPO, WIPO, Google, Lens | `USPTOClient`, `EPOClient`, `WIPOClient`, etc. |
+| `clients/base_scraper.py` | Shared `httpx.AsyncClient`, randomized delays, rotating User-Agent, rate-limit enforcement | `BaseScraper`, `get_with_backoff()`, `ROTATING_USER_AGENTS` |
+| `clients/scrapers.py` | Source-specific scrapers: DuckDuckGo, Google Patents, WIPO, USPTO | `DuckDuckGoClient`, `GooglePatentsClient`, `WIPOClient`, `USPTOClient` |
+| `clients/patent_apis.py` | **Opt-in** API clients: EPO, Lens.org (Phase 3 only) | `EPOClient`, `LensOrgClient` |
 | `clients/intelligence.py` | Cross-reference data sources | `IntelligenceClient` |
 
-**Architectural Decision:** All clients inherit from `BaseClient` which manages:
-- **Singleton `httpx.AsyncClient`:** Reused across requests to enable HTTP/2 connection pooling and TCP keep-alive. Creating a new client per request would cost ~200ms TLS handshake overhead.
-- **Exponential backoff:** 1s -> 2s -> 4s -> 8s on HTTP 429/503, with jitter to prevent thundering herd.
-- **Rate limit enforcement:** Client-side token bucket enforcing 24% headroom (e.g., 76 req/min for a 100 req/min limit).
+**Architectural Decision:** All scraper clients inherit from `BaseScraper` which enforces:
+- **Singleton `httpx.AsyncClient`:** Reused across scrapes to enable HTTP/2 connection pooling and TCP keep-alive.
+- **Randomized sleep delays (1-3s):** Mandatory jitter between concurrent background requests to evade rate-limit detection.
+- **Rotating User-Agent pool:** Each request picks a random User-Agent from a curated list of modern browser strings.
+- **Max 2 concurrent workers for DDG:** DuckDuckGo aggressively bans scrapers; concurrency is intentionally capped.
+- **Aggressive SQLite caching:** Every scrape result is cached with 30-day TTL. Repeated identical queries never touch the network.
+- **No exponential backoff on 429:** For scrapers, a 429 means "stop scraping this source for this session" -- fall back to cache or skip silently.
 
 ### 3.5 Local Storage (`storage/`)
 
@@ -220,7 +236,7 @@ There are no network boundaries between layers. All communication is in-process 
 
 ## 4. Data Flow
 
-### 4.1 CLI Search Flow (Cold Cache)
+### 4.1 CLI Search Flow (Cold Cache, Default Scrapers)
 
 ```
 User: recon search "solid state battery"
@@ -229,27 +245,37 @@ User: recon search "solid state battery"
 [Typer] Parse arguments -> invoke search_patents(query="solid state battery")
   |
   v
-[Config] Load ~/.config/recon/config.toml -> extract USPTO_API_KEY
+[Config] Load ~/.config/recon/config.toml -> check for API keys
+  |       └── No API keys found -> use default scrapers (DDG + Google + WIPO + USPTO)
   |
   v
 [CacheDatabase] SELECT * FROM search_results WHERE query_hash = SHA256("solid state battery")
   |   └── Cache miss (cold)
   |
   v
-[SearchEngine] Build API params -> dispatch 3 concurrent tasks via asyncio.gather()
+[SearchEngine] Build query params -> dispatch 4 concurrent scraper tasks
   |
-  |---> [USPTOClient] GET api.uspto.gov/v1/patent/applications/search?q=...
-  |       |---> HTTP 200 -> parse JSON -> list[PatentRecord]
-  |       └──> HTTP 429 -> BaseClient backoff -> retry -> max 4 attempts
+  |---> [DuckDuckGoClient] ddgs.text(query, max_results=10)
+  |       |---> Rate limit guard: max 2 concurrent threads
+  |       |---> Random sleep (1-3s) before request
+  |       |---> Random User-Agent selected
+  |       |---> HTTP 200 -> parse results -> list[PatentRecord]
+  |       └──> HTTP 429 -> log warning, return empty, fall back to cache
+  |
+  |---> [GooglePatentsClient] GET patents.google.com/?q=...
+  |       |---> Random sleep (1-3s) before request
+  |       |---> beautifulsoup4 parse HTML -> extract patent cards
+  |       |---> Normalize to PatentRecord
+  |       └──> HTML structure change -> fallback parser
   |
   |---> [WIPOClient] GET patentscope.wipo.int/search/...
-  |       └──> HTTP 200 -> parse HTML/JSON -> list[PatentRecord]
+  |       └──> Parse HTML/JSON -> list[PatentRecord]
   |
-  └──> [EPOClient] GET ops.epo.org/rest-services/published-data/search/...
-          └──> OAuth token refresh if 401 -> request -> parse XML/JSON
+  └──> [USPTOClient] GET api.uspto.gov/v1/patent/applications/search?q=...
+          └──> HTTP 200 -> parse JSON -> list[PatentRecord]
   |
   v
-[SearchEngine] Merge 3 result lists -> deduplicate by patent family
+[SearchEngine] Merge result lists -> deduplicate by patent family
   |
   v
 [ScoringEngine] For each result, query IntelligenceClient:
@@ -274,19 +300,20 @@ User: recon search "solid state battery"
 User sees formatted table in terminal
 ```
 
-**Latency budget (cold cache, 3 APIs):**
+**Latency budget (cold cache, 4 scrapers):**
 - Config load: ~5ms
 - Cache miss: ~2ms
-- USPTO API: ~800ms (TLS + request + parse)
-- WIPO API: ~1200ms (slower endpoint)
-- EPO API: ~1500ms (OAuth + request)
-- Concurrent dispatch: max(800, 1200, 1500) = ~1500ms (asyncio.gather)
-- Merge + deduplicate: ~10ms (50 results)
-- Scoring (6 signals x 50 patents): ~300ms (parallel where possible)
+- **Mandatory random sleep (DDG): ~2000ms** (1-3s jitter, average 2s)
+- Google Patents scrape: ~1500ms (HTML parse heavy)
+- WIPO scrape: ~1200ms
+- USPTO API: ~800ms
+- Concurrent dispatch with staggered sleep: max(2000, 1500, 1200, 800) = ~2000ms
+- Merge + deduplicate: ~10ms
+- Scoring (6 signals x 50 patents): ~300ms
 - Sort: ~5ms
 - Cache write: ~20ms
 - Render: ~50ms
-- **Total: ~1.9s** (under 3s warm target, under 8s cold target)
+- **Total: ~2.7s** (under 3s warm target, under 8s cold target)
 
 ### 4.2 TUI Search Flow (Warm Cache)
 
@@ -327,7 +354,7 @@ User presses l (next tab)
 [SearchScreen.on_tabbed_content_tab_activated] tab_id="claims"
   |
   v
-[ClaimsTab] Lazy load: if not loaded, fetch claims from cache or API
+[ClaimsTab] Lazy load: if not loaded, fetch claims from cache or scraper
   |       └── Cache hit -> render claims text (~50ms)
   |
   v
@@ -365,6 +392,9 @@ User presses s (save)
 | **Python** | >=3.12 | Runtime | Pattern matching, improved `asyncio`, `tomllib` (stdlib TOML parser), better error messages |
 | **textual** | ^0.x | TUI framework | Only mature Python TUI framework with CSS-like styling, reactive components, and async event handling. `urwid` is unmaintained; `curses` is too low-level; `rich` alone has no interactive widgets |
 | **httpx** | ^0.27 | HTTP client | Native `async`/`await` support; HTTP/2 by default; API-compatible with `requests` but non-blocking. `aiohttp` is heavier and has a steeper learning curve; `requests` is blocking |
+| **beautifulsoup4** | ^4.x | HTML parsing | De facto standard for Python HTML parsing. Required for scraping Google Patents, WIPO, and any HTML-based patent source |
+| **lxml** | ^5.x | XML/HTML parser | Required by beautifulsoup4 as the fast parser backend. 10-50x faster than Python's built-in `html.parser` |
+| **duckduckgo_search** | ^6.x | DuckDuckGo scraping | Lightweight, well-maintained library for programmatic DDG search. Avoids re-implementing DDG's query parameters, captcha handling, and result parsing |
 | **Pillow** | ^10.x | Image processing | De facto standard for Python image manipulation. Required for resizing patent diagrams to terminal-friendly dimensions and converting to sixel/inline formats |
 | **rapidfuzz** | ^3.x | Fuzzy string matching | 10-100x faster than `fuzzywuzzy` (Levenshtein in C++). Required for entity matching in cross-reference scoring at scale |
 | **typer** | ^0.12 | CLI framework | Auto-generates help text, handles type annotations, supports subcommands with 1/10th the boilerplate of `argparse`. Click is an alternative but Typer is more modern |
@@ -386,6 +416,8 @@ User presses s (save)
 | **Pydantic** | Adds ~30MB dependency; `dataclasses` + `__post_init__` validation is sufficient | C-008 (minimal dependencies) |
 | **orjson** | 28x faster than `json`, but `json` is stdlib and patent responses are <100KB | C-008 (minimal dependencies) |
 | **aiosqlite** | Async SQLite wrapper; SQLite is single-threaded and cache reads are <50ms -- async adds complexity with no measurable gain | C-008 (minimal dependencies) |
+| **selenium / playwright** | Headless browser automation is overkill for scraping; beautifulsoup4 + httpx handles patent HTML pages without JavaScript rendering overhead | C-008 (minimal dependencies) |
+| **scrapy** | Full web-scraping framework is inappropriate for a CLI tool; adds 30+ dependencies for features we won't use (spiders, item pipelines, feed exports) | C-008 (minimal dependencies) |
 | **uvloop** | Drop-in asyncio replacement; Linux-only, adds C extension, marginal gain for CLI tool | C-008 (minimal dependencies) |
 | **SQLAlchemy** | ORM overhead unnecessary; 4 SQLite tables with raw SQL are maintainable | C-008 (minimal dependencies) |
 | **openai / anthropic / ollama** | LLM integration is explicitly prohibited in default path | C-002 (zero-AI default) |
@@ -394,20 +426,20 @@ User presses s (save)
 
 ---
 
-## 6. API Layer Design
+## 6. Scraper & API Layer Design
 
-### 6.1 External Patent API Abstraction
+### 6.1 Default Scraper Abstraction
 
-RECON does not expose an API. Instead, it **consumes** external APIs through an internal abstraction layer. This section describes the client architecture.
+RECON scrapes web sources by default using a common `BaseScraper` interface. The `SearchEngine` dispatches to scrapers identically regardless of whether the source is an API or a scraped HTML page.
 
-#### Base Client Interface
+#### Base Scraper Interface
 
 ```python
-class BaseClient:
-    # Abstract base for all patent data sources.
+class BaseScraper:
+    # Abstract base for all patent data sources (scraped or API).
 
     async def search(self, query: str, limit: int = 10) -> list[PatentRecord]:
-        # Execute search against source API.
+        # Execute search against source.
         raise NotImplementedError
 
     async def fetch_claims(self, patent_id: str) -> list[str]:
@@ -423,23 +455,79 @@ class BaseClient:
         raise NotImplementedError
 ```
 
-#### Adapter Pattern for API Heterogeneity
+#### Adapter Pattern for Source Heterogeneity
 
-| Source | Protocol | Response Format | Adapter Responsibility |
-|--------|----------|-----------------|------------------------|
-| USPTO | REST/JSON | Nested JSON with `response.docs[]` | Flatten nested fields; map `patentNumber` -> `id` |
-| WIPO | REST/HTML+JSON | Mixed HTML/JSON | Parse patent list from HTML or JSON endpoint; normalize field names |
-| EPO | REST/XML+JSON | XML `ops:world-patent-data` | XML -> dict conversion; handle OAuth token refresh |
-| Google Patents | Unofficial/Scrape | HTML | Robust HTML parsing with fallback; handle bot detection gracefully |
-| Lens.org | REST/JSON | Flat JSON array | Direct field mapping |
+| Source | Type | Protocol | Response Format | Adapter Responsibility |
+|--------|------|----------|-----------------|------------------------|
+| DuckDuckGo | Scraper (default) | `duckduckgo_search` library | Text snippets + URLs | Parse text results; extract patent-like URLs; filter non-patent results |
+| Google Patents | Scraper (default) | HTTP GET + beautifulsoup4 | HTML | Robust HTML parsing; extract patent cards, titles, assignees, dates; handle bot detection gracefully |
+| WIPO | Mixed (default) | REST/HTML+JSON | Mixed HTML/JSON | Parse patent list from HTML or JSON endpoint; normalize field names |
+| USPTO | API (default, free) | REST/JSON | Nested JSON with `response.docs[]` | Flatten nested fields; map `patentNumber` -> `id` |
+| EPO | API (opt-in, Phase 3) | REST/XML+JSON | XML `ops:world-patent-data` | XML -> dict conversion; handle OAuth token refresh |
+| Lens.org | API (opt-in, Phase 3) | REST/JSON | Flat JSON array | Direct field mapping |
 
-**Architectural Decision:** Each client normalizes its source-specific response into a canonical `PatentRecord` dataclass. The SearchEngine never sees raw API responses -- only standardized domain objects. This isolates API format changes to a single adapter file.
+**Architectural Decision:** Each client normalizes its source-specific response into a canonical `PatentRecord` dataclass. The SearchEngine never sees raw responses -- only standardized domain objects. Scrapers and API clients share the same interface, making them swappable via config.
 
-### 6.2 Rate Limiting Architecture
+### 6.2 Scraper Resilience & Rate-Limit Evasion
+
+Because RECON scrapes web sources (which have no contractual API agreement), the architecture mandates aggressive resilience measures:
+
+| Measure | Implementation | Rationale |
+|---------|---------------|-----------|
+| **Aggressive SQLite caching** | Every scraper response is written to SQLite with 30-day TTL. Repeated identical queries are served from cache with zero network cost. | Patent data changes slowly. A cache hit avoids all scraper-related risk. |
+| **Random sleep delays (1-3s)** | `asyncio.sleep(random.uniform(1.0, 3.0))` before every concurrent background request. Sleep is applied per-source, not globally. | Prevents temporal fingerprinting. Fixed delays are trivial to detect and block. |
+| **Dynamic rotating User-Agents** | A curated pool of 20+ modern browser User-Agent strings. Each request picks one at random. | Many scrapers fail because they send the default `httpx` or `requests` User-Agent, which is trivially blocked. |
+| **Max 2 concurrent workers for DDG** | `asyncio.Semaphore(2)` specifically for DuckDuckGo queries. | DuckDuckGo aggressively bans IPs that send concurrent requests. Serializing with low concurrency is the only reliable approach. |
+| **Graceful degradation on 429** | When a scraper receives HTTP 429, it logs a warning, returns cached results if available, and skips that source for the remainder of the session. | Unlike APIs (which have documented rate limits and retry headers), scrapers offer no contractual rate limit. Retrying against a 429 is futile and risks IP ban. |
+| **Source-level circuit breaker** | After 3 consecutive 429/503 responses, the source is disabled for the current process lifetime. | Prevents cascading failures and wasted resources on a blocked source. |
+| **Cache-first fallback** | If ALL scrapers fail (all 4 sources return errors), the search engine serves the most recent cache entry for the query, even if expired. | "Better stale data than no data" -- maintains offline resilience. |
+
+```python
+# BaseScraper rate-limit evasion pattern
+class BaseScraper:
+    ROTATING_USER_AGENTS = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ...",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 ...",
+        # ... 20+ modern browser UA strings
+    ]
+
+    def __init__(self):
+        self._ddg_semaphore = asyncio.Semaphore(2)  # DDG: max 2 concurrent
+        self._circuit_breaker = {"failures": 0, "disabled": False}
+
+    async def _rate_limited_request(self, url: str, source: str) -> Response:
+        if self._circuit_breaker["disabled"]:
+            raise SourceDisabledError(f"{source} is circuit-broken")
+
+        await asyncio.sleep(random.uniform(1.0, 3.0))  # Random jitter
+
+        headers = {
+            "User-Agent": random.choice(self.ROTATING_USER_AGENTS),
+            "Accept": "text/html,application/xhtml+xml",
+            "Accept-Language": "en-US,en;q=0.5",
+        }
+
+        async with (self._ddg_semaphore if source == "ddg" else nullcontext()):
+            response = await self.client.get(url, headers=headers)
+
+        if response.status_code == 429:
+            self._circuit_breaker["failures"] += 1
+            if self._circuit_breaker["failures"] >= 3:
+                self._circuit_breaker["disabled"] = True
+            raise RateLimitedError(f"{source} returned 429")
+
+        self._circuit_breaker["failures"] = 0  # Reset on success
+        return response
+```
+
+### 6.3 Rate Limiting Architecture (API Clients Only)
+
+For opt-in API clients (Phase 3), the original token bucket rate limiter applies:
 
 ```python
 class TokenBucket:
     # Client-side rate limiter with 24% headroom.
+    # Only used by opt-in API clients (EPO, Lens.org).
 
     def __init__(self, rate_per_minute: int):
         self.capacity = int(rate_per_minute * 0.76)  # 24% headroom
@@ -452,27 +540,26 @@ class TokenBucket:
         self.tokens -= 1
 ```
 
-**Rationale:** Client-side rate limiting is mandatory because:
-- USPTO will ban API keys exceeding limits
-- EPO returns 403 with no retry-after header
-- WIPO silently throttles (increases latency) rather than returning 429
-- 24% headroom provides buffer for clock skew, burst traffic, and retry attempts
+**Note:** The token bucket is NOT applied to scrapers. Scrapers use the randomized-delay + circuit-breaker pattern described in 6.2 instead, because scraped sources do not publish rate limits and do not provide retry-after headers.
 
 ---
 
 ## 7. Authentication & Authorization Strategy
 
-### 7.1 External API Authentication
+### 7.1 External Source Authentication
 
-RECON has **no user authentication system**. It authenticates to external patent APIs on behalf of the user using stored credentials.
+RECON has **no user authentication system**. It authenticates to external sources on behalf of the user.
 
-| API | Auth Method | Storage | Security |
-|-----|-------------|---------|----------|
-| USPTO | X-API-KEY header | `~/.config/recon/config.toml` | File permissions 0600; key masked in `recon config show` (****) |
-| EPO | OAuth 2.0 (Client Credentials) | Consumer Key + Secret in config.toml; access token in memory only | Token refresh on 401; token never persisted |
-| WIPO | None | N/A | N/A |
-| Google Patents | None | N/A | N/A |
-| Lens.org | X-Api-Key header | `config.toml` | Same as USPTO |
+| Source | Type | Auth Method | Storage | Phase |
+|--------|------|-------------|---------|-------|
+| DuckDuckGo | Scraper (default) | None | N/A | Phase 1 |
+| Google Patents | Scraper (default) | None | N/A | Phase 1 |
+| WIPO | Scraper (default) | None | N/A | Phase 1 |
+| USPTO | API (default, free) | None (open endpoint) | N/A | Phase 1 |
+| EPO | API (opt-in) | OAuth 2.0 (Client Credentials) | Consumer Key + Secret in config.toml; access token in memory only | Phase 3 |
+| Lens.org | API (opt-in) | X-Api-Key header | `~/.config/recon/config.toml` | Phase 3 |
+
+**Default path:** Zero API keys required. The tool works immediately after `pip install`.
 
 ### 7.2 Local File Permissions
 
@@ -481,11 +568,23 @@ RECON has **no user authentication system**. It authenticates to external patent
 ~/.local/share/recon/cache.db  # 0600 (owner read/write only)
 ```
 
-**Rationale:** SQLite and TOML files contain API keys and search history. Unix file permissions are the only security boundary in a single-user local application. Windows uses ACL equivalents.
+**Rationale:** SQLite and TOML files may contain API keys if the user has opted into Phase 3. Unix file permissions are the only security boundary in a single-user local application.
 
 ### 7.3 No Authorization (By Design)
 
-There are no roles, permissions, or access control lists. RECON is a single-user tool running under the OS user's privileges. If the OS user can read `config.toml`, they can use the APIs. This is intentional -- adding RBAC would require a server and violate the zero-infrastructure goal.
+There are no roles, permissions, or access control lists. RECON is a single-user tool running under the OS user's privileges. If the OS user can read `config.toml`, they can use the configured sources. This is intentional -- adding RBAC would require a server and violate the zero-infrastructure goal.
+
+### 7.4 Phase 3: Power-User Configuration
+
+EPO and Lens.org APIs are **strictly opt-in** and require explicit user action:
+
+```
+recon config --api-key lens YOUR_LENS_KEY
+recon config --api-key epo-consumer-key YOUR_EPO_KEY
+recon config --api-key epo-consumer-secret YOUR_EPO_SECRET
+```
+
+When configured, these sources are added to the default search pipeline alongside scrapers. When not configured, they are silently skipped. The search engine never warns about missing API keys -- they are purely additive.
 
 ---
 
@@ -509,7 +608,7 @@ CREATE INDEX idx_expires ON search_results(expires_at);
 CREATE TABLE collections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     patent_json TEXT NOT NULL,    -- Full PatentRecord JSON
-    source_api TEXT NOT NULL,     -- 'USPTO', 'WIPO', etc.
+    source_api TEXT NOT NULL,     -- 'DDG', 'GOOGLE_PATENTS', 'USPTO', etc.
     saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     collection_name TEXT DEFAULT 'default'
 );
@@ -530,7 +629,7 @@ CREATE TABLE search_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     query_text TEXT NOT NULL,
     result_count INTEGER,
-    sources TEXT,                 -- JSON array of APIs queried
+    sources TEXT,                 -- JSON array of sources queried
     searched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -547,7 +646,7 @@ CREATE TABLE cache_health (
 
 | Decision | Rationale |
 |----------|-----------|
-| **JSON columns** | Patent records are semi-structured (fields vary by source). Normalizing to 20+ columns creates schema migration hell when APIs change. JSON provides flexibility with Python's native `json.loads`/`dumps`. |
+| **JSON columns** | Patent records are semi-structured (fields vary by source). Normalizing to 20+ columns creates schema migration hell when sources change. JSON provides flexibility with Python's native `json.loads`/`dumps`. |
 | **SHA256 query_hash as PK** | Deterministic, collision-resistant, fixed-width. Normalizing query text (lowercase, sorted params) ensures `"Solid State Battery"` and `"solid state battery"` hit the same cache entry. |
 | **No foreign keys** | SQLite FK enforcement is optional and adds overhead. Data integrity is maintained in Python (PatentRecord dataclass validation). |
 | **Single database file** | `~/.local/share/recon/cache.db` -- portable, backup-friendly, zero configuration. |
@@ -562,7 +661,7 @@ def vacuum_expired(self):
     )
 
 def get_or_search(self, query: str):
-    # Cache-aside pattern: check cache, miss -> API -> write cache.
+    # Cache-aside pattern: check cache, miss -> scrape/API -> write cache.
     hash = sha256(query.lower().strip())
     row = cursor.execute(
         "SELECT results_json FROM search_results WHERE query_hash = ? AND expires_at > CURRENT_TIMESTAMP",
@@ -572,7 +671,7 @@ def get_or_search(self, query: str):
     if row:
         return json.loads(row[0])  # Cache hit
 
-    results = await search_apis(query)  # Cache miss
+    results = await search_sources(query)  # Cache miss
     cursor.execute(
         "INSERT OR REPLACE INTO search_results (query_hash, query_text, results_json, expires_at) VALUES (?, ?, ?, datetime('now', '+30 days'))",
         (hash, query, json.dumps(results))
@@ -580,7 +679,7 @@ def get_or_search(self, query: str):
     return results
 ```
 
-**Pattern:** Cache-Aside (Lazy Loading). The application checks cache first; on miss, fetches from API and populates cache. This avoids cache warming complexity and stale data issues.
+**Pattern:** Cache-Aside (Lazy Loading). The application checks cache first; on miss, scrapes/fetches from sources and populates cache. This avoids cache warming complexity and stale data issues.
 
 ---
 
@@ -591,8 +690,10 @@ def get_or_search(self, query: str):
 | Level | Technology | Scope | TTL | Hit Rate Target |
 |-------|-----------|-------|-----|-----------------|
 | **L1: In-Memory** | Python `dict` | Current TUI session | Session | 90% (tab switching) |
-| **L2: Local SQLite** | SQLite | Cross-session | 30 days | 70% (repeat queries) |
-| **L3: External API** | USPTO/WIPO/EPO | Global | N/A | N/A |
+| **L2: Local SQLite** | SQLite | Cross-session | 30 days | 80%+ (aggressive caching is critical for scraper resilience) |
+| **L3: External Source** | DDG/Google/WIPO/USPTO | Global | N/A | N/A |
+
+**Note for scraper architecture:** The L2 cache hit rate target is elevated from 70% to 80%+ because every cache miss carries scrap risk (429, IP ban, latency). The design biases toward longer cache lifetimes rather than fresher data.
 
 ### 9.2 L1: Session Cache (TUI)
 
@@ -614,6 +715,7 @@ class SearchScreen:
 - **TTL:** 90 days for citations (citation graphs are relatively stable)
 - **TTL:** Infinite for collections (user explicitly saved)
 - **Eviction:** LRU manual vacuum on startup if DB > 1GB
+- **Stale-cache serving:** If ALL sources fail (network down, all scrapers blocked), the engine serves the most recent cache entry regardless of TTL. This is explicit scraper-resilience behavior: stale data is better than no data.
 
 ### 9.4 Cache Invalidation
 
@@ -621,8 +723,8 @@ class SearchScreen:
 |----------|--------|
 | User runs identical query | Serve from cache if TTL valid |
 | User modifies query slightly | New cache entry (different hash) |
-| Cache corruption detected | Delete single row, re-fetch |
-| API schema change | Versioned cache key (`v2:sha256(query)`) |
+| Cache corruption detected | Delete single row, re-scrape |
+| Source HTML structure changes | Versioned cache key (`v2:sha256(query)`) |
 | User forces refresh | `--no-cache` flag bypasses L2 |
 
 ### 9.5 Cache Consistency
@@ -640,20 +742,22 @@ All user-facing errors follow the **DRY** principle: **D**irect, **R**eproducibl
 | Correct | Incorrect |
 |---------|-----------|
 | `ERR: USPTO API rate limit exceeded. Retry in 60s or reduce query complexity.` | `Something went wrong` |
-| `ERR: WIPO search failed (HTTP 503). Serving 12 results from cache (expires 2026-07-15).` | `Error: 503` |
-| `ERR: Config file not found at ~/.config/recon/config.toml. Run: recon config --uspto-key YOUR_KEY` | `FileNotFoundError: [Errno 2] No such file or directory` |
+| `ERR: DuckDuckGo search blocked (429). Serving 8 cached results from 2026-06-20.` | `Error: 429` |
+| `ERR: Config file not found at ~/.config/recon/config.toml. Run: recon config --help` | `FileNotFoundError: [Errno 2] No such file or directory` |
 | `ERR: No patents found for "xyz123". Try broader keywords or check spelling.` | `[]` (empty output, no explanation) |
+| `ERR: All patent sources unreachable. Showing 5 cached results from 2026-06-01.` | N/A |
 
 ### 10.2 Error Classification
 
 | Category | Handling | User Notification |
 |----------|----------|-----------------|
-| **API Failure (single source)** | Log full traceback to file; return partial results from other sources; notify user | `ERR: [USPTO] failed. Results from WIPO, EPO shown.` |
-| **API Failure (all sources)** | Log traceback; serve from cache if available; notify user | `ERR: All APIs unreachable. Showing 5 cached results from 2026-06-01.` |
-| **Rate Limit Hit** | Exponential backoff; if max retries exceeded, fail source gracefully | `ERR: Rate limit hit. Using cached data.` |
-| **Cache Corruption** | Catch JSONDecodeError -> delete row -> re-fetch from API | `ERR: Cache corrupted for query. Re-fetching from API.` |
+| **Scraper Failure (single source)** | Log full traceback to file; return partial results from other sources; notify user | `ERR: [DDG] blocked. Results from Google, WIPO, USPTO shown.` |
+| **Scraper Failure (all sources)** | Log traceback; serve from cache if available; notify user | `ERR: All sources unreachable. Showing 5 cached results from 2026-06-01.` |
+| **Rate Limit / Blocked (scraper)** | Circuit breaker disables source for session; fall back to cache | `ERR: DuckDuckGo blocked this session. Using cached results.` |
+| **API Failure (opt-in Phase 3)** | Skip source; continue with remaining sources | `ERR: EPO API failed. Results from other sources shown.` |
+| **Cache Corruption** | Catch JSONDecodeError -> delete row -> re-scrape from sources | `ERR: Cache corrupted for query. Re-fetching from sources.` |
 | **Config Missing** | Halt execution with actionable fix | `ERR: USPTO key missing. Run: recon config --uspto-key XXX` |
-| **Terminal Unsupported** | Fallback to external viewer or URL display | `INFO: Terminal does not support inline images. Opening external viewer.` |
+| **HTML Structure Change** | Log warning; try fallback parser; serve partial results | `ERR: Google Patents format changed. Some results may be incomplete.` |
 
 ### 10.3 Logging Strategy
 
@@ -661,10 +765,10 @@ All user-facing errors follow the **DRY** principle: **D**irect, **R**eproducibl
 # Internal logging (debug/audit)
 import logging
 logger = logging.getLogger("recon")
-logger.debug("USPTO request: GET /patent/applications/search?q=%s", query)
+logger.debug("DDG request: %s", query)
 logger.info("Cache hit for query_hash=%s", hash)
-logger.warning("EPO token expires in 300s, refreshing")
-logger.error("WIPO HTTP 503, attempt 3/4", exc_info=True)  # Full traceback in log file
+logger.warning("Google Patents HTML structure mismatch -- using fallback parser")
+logger.error("All scrapers failed for query '%s'; serving stale cache", query, exc_info=True)
 ```
 
 | Destination | Content | Rotation |
@@ -684,13 +788,16 @@ except Exception:
 
 # CORRECT: Dry error voice with structured recovery
 try:
-    results = await uspto_client.search(query)
-except httpx.HTTPStatusError as e:
-    logger.error("USPTO search failed: %s", e, exc_info=True)
-    self.notify(f"ERR: USPTO failed ({e.response.status_code}). Using other sources.")
-    results = []  # Graceful degradation
+    results = await ddg_client.search(query)
+except RateLimitedError:
+    logger.warning("DDG rate limited, serving cache")
+    results = cache.get_stale(query) or []
+    self.notify("ERR: DuckDuckGo blocked. Using cached results.")
+except SourceDisabledError:
+    logger.info("DDG circuit-broken, skipping")
+    results = []
 except Exception as e:
-    logger.critical("Unexpected error in USPTO search: %s", e, exc_info=True)
+    logger.critical("Unexpected error in DDG scrape: %s", e, exc_info=True)
     self.notify(f"ERR: Unexpected error. Check {LOG_PATH} and report issue.")
     results = []
 ```
@@ -708,12 +815,13 @@ RECON scales vertically within a single machine:
 | **CPU** | 1 core for SQLite + asyncio event loop | Patent scoring is CPU-bound for large result sets; offloading to `asyncio.to_thread()` for rapidfuzz matching |
 | **Memory** | ~50MB base + ~10MB per 1000 results | Session cache eviction (keep only visible results in memory); SQLite page cache tuned to 10MB |
 | **Disk** | SQLite grows ~1MB per 1000 patents | Auto-vacuum on startup if >1GB; compress old collections |
-| **Network** | 3 concurrent HTTP/2 connections | `httpx.AsyncClient(limits=Limits(max_connections=10))` |
+| **Network** | 2-4 concurrent HTTP connections (capped for scraper safety) | `httpx.AsyncClient(limits=Limits(max_connections=5))` |
 
 ### 11.2 Concurrency Model
 
 ```python
-# SearchEngine dispatches N API calls concurrently
+# SearchEngine dispatches N source queries concurrently
+# Scraper sources use semaphores to limit DDG concurrency
 async def search_all(query: str, sources: list[str]) -> list[PatentRecord]:
     tasks = [client.search(query) for client in active_clients]
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -729,7 +837,7 @@ async def search_all(query: str, sources: list[str]) -> list[PatentRecord]:
     return valid_results
 ```
 
-**Rationale:** `asyncio.gather` with `return_exceptions=True` ensures one slow API (e.g., WIPO at 2s) doesn't block faster APIs (USPTO at 800ms). The user sees results as soon as the fastest source responds, with slower sources appending later.
+**Rationale:** `asyncio.gather` with `return_exceptions=True` ensures one slow source (e.g., Google Patents at 1.5s) doesn't block faster sources. Each scraper internally manages its own concurrency limits (DDG semaphore = 2), so gathering them all at once is safe.
 
 ### 11.3 No Horizontal Scaling (By Design)
 
@@ -757,38 +865,90 @@ RECON will never scale horizontally because:
 
 | Trade-off | Decision | Rationale | Cost |
 |-----------|----------|-----------|------|
+| **Scrapers vs APIs** | Scrapers default | Zero cost, zero registration, works immediately | Fragile; subject to HTML changes; higher latency variance |
 | **SQLite vs PostgreSQL** | SQLite | Zero config, single file, stdlib-adjacent | No concurrent multi-user access; 1GB practical limit |
-| **JSON columns vs normalized schema** | JSON | API schemas change frequently; patent fields vary by jurisdiction | No SQL-level querying inside JSON; all filtering in Python |
+| **JSON columns vs normalized schema** | JSON | Source schemas change frequently; patent fields vary by jurisdiction | No SQL-level querying inside JSON; all filtering in Python |
 | **Asyncio vs threading** | Asyncio | Natural fit for HTTP I/O; Textual is async-native | Blocking operations (Pillow image resize) must use `to_thread()` |
 | **Single-process vs client-server** | Single-process | Zero infrastructure; no network latency | No remote access; no multi-user |
 | **Zero-AI vs smart ranking** | Zero-AI | Deterministic, auditable, reproducible | May miss semantically related patents that keyword search omits |
-| **Stdlib json vs orjson** | Stdlib json | Constitution: minimal deps | 28x slower serialization; acceptable for <100KB responses |
+| **DDG concurrency cap (2)** | Semaphore(2) | Prevents IP ban; constitutional scraper resilience | Slower DDG response for broad queries |
 | **TUI vs web GUI** | TUI | Core differentiator; keyboard efficiency | Steeper learning curve; requires modern terminal |
 
 ### 12.2 Risks & Mitigations
 
 | Risk ID | Risk | Likelihood | Impact | Mitigation |
 |---------|------|------------|--------|------------|
-| **R-001** | USPTO/EPO API changes or decommissioning | Medium | High | Abstract client interface; adapter pattern isolates changes; monitor API status pages |
-| **R-002** | Google Patents blocks scraper | High | Medium | Implement robots.txt compliance; fallback to other sources; never rely on Google as sole source |
+| **R-001** | DuckDuckGo changes HTML structure or blocks scraper | High | Medium | Aggressive caching reduces repeat scrape risk; fallback to Google Patents + USPTO; `duckduckgo_search` library maintainers typically adapt quickly |
+| **R-002** | Google Patents blocks scraper | High | Medium | Implement robots.txt compliance; fallback to USPTO + WIPO; never rely on Google as sole source |
 | **R-003** | SQLite corruption on power loss | Low | Medium | WAL mode (Write-Ahead Logging) enabled; periodic integrity_check |
 | **R-004** | Terminal emulator incompatibility | Medium | Low | Protocol detection with graceful fallback to external viewer |
-| **R-005** | API key exposure in backups | Medium | High | Config file 0600 permissions; document security best practices; never log keys |
+| **R-005** | API key exposure in backups (Phase 3) | Medium | High | Config file 0600 permissions; document security best practices; never log keys |
 | **R-006** | Patent data volume exceeds SQLite performance | Low | Medium | 1GB auto-vacuum threshold; archive old collections to JSON files |
-| **R-007** | EPO OAuth token expiry mid-search | Medium | Medium | Token refresh on 401; pre-emptive refresh at 80% token lifetime |
-| **R-008** | httpx breaking change in future version | Medium | High | Pin major version in `pyproject.toml`; CI tests against latest httpx |
+| **R-007** | EPO OAuth token expiry mid-search (Phase 3) | Medium | Medium | Token refresh on 401; pre-emptive refresh at 80% token lifetime |
+| **R-008** | All scrapers simultaneously blocked | Low | High | Serve stale cache; if cache empty, inform user with actionable error; offline mode |
 | **R-009** | User has no modern terminal (Windows CMD) | Medium | Low | Document terminal requirements; recommend Windows Terminal or WSL |
 | **R-010** | AI/LLM feature creep violates constitution | Medium | High | Automated CI check: `grep -r "openai\|anthropic\|ollama" --include="*.py" .` fails build |
+| **R-011** | `duckduckgo_search` library becomes unmaintained | Low | Medium | Pinned version in `pyproject.toml`; documented fallback to direct HTTP scrape of DDG; swappable interface |
+| **R-012** | IP-based rate limiting affects other browser usage | Medium | Low | Document that RECON adds 1-3s delays and low concurrency; user can configure `recon config --max-concurrency 1` |
 
 ### 12.3 Technical Debt Register
 
 | Item | Location | Severity | Resolution Plan |
 |------|----------|----------|-----------------|
-| EPO OAuth client may be incomplete | `clients/patent_apis.py` | High | Verify token refresh flow; add integration test |
-| Google Patents scraper fragility | `clients/patent_apis.py` | Medium | Add HTML parser fallback; monitor for structural changes |
+| DDG scraper may not capture patent-specific results well | `clients/scrapers.py` | Medium | Add post-filtering to classify DDG results as patent-relevant; add unit tests |
+| Google Patents scraper fragility | `clients/scrapers.py` | High | Add HTML parser fallback; monitor for structural changes; CI snapshot testing |
 | TUI preview tab data loading | `tui/screens.py` | High | Verify `_load_active_tab()` uses `.update()` not custom methods |
 | Phase C test files missing | `tests/` | Medium | Create `test_cache_validation.py`, `test_performance.py`, `test_error_handling.py` |
 | Constitution audit unverified | All `.py` files | Medium | Automated script: check `ERR:` prefix, no `except: pass`, no AI imports |
+
+---
+
+## Phase 3: Power-User Configuration (EPO & Lens.org APIs)
+
+### Overview
+
+EPO Open Patent Services and Lens.org are **strictly opt-in** paid/power-user API sources. They are not available in the default out-of-the-box experience. Users must explicitly configure API keys.
+
+### Activation
+
+```bash
+# Opt into EPO API
+recon config --api-key epo-consumer-key YOUR_EPO_CONSUMER_KEY
+recon config --api-key epo-consumer-secret YOUR_EPO_CONSUMER_SECRET
+
+# Opt into Lens.org API
+recon config --api-key lens YOUR_LENS_API_KEY
+
+# Verify configured sources
+recon config show
+
+# Search with all sources (incl. opt-in APIs)
+recon search "solid state battery"  # automically includes EPO + Lens if configured
+```
+
+### Impact on Search Engine
+
+When EPO and/or Lens keys are configured, the `SearchEngine` adds their clients to the active source list. The search engine dispatches to all configured sources in parallel:
+
+- **Default sources (always active):** DuckDuckGo, Google Patents, WIPO, USPTO
+- **Phase 3 sources (active only if keys present):** EPO, Lens.org
+
+The user can also explicitly include/exclude sources:
+
+```bash
+recon search "quantum computing" --sources uspto,wipo,epo  # includes EPO even if configured
+```
+
+### Rate Limiting for Phase 3 APIs
+
+Unlike scrapers (randomized delays), API clients use a deterministic token bucket:
+
+- **EPO:** 76 req/min (24% headroom below 100 req/min limit)
+- **Lens.org:** 38 req/min (24% headroom below 50 req/min limit)
+
+### Authentication Flow
+
+See Section 7 for authentication details. API keys are stored in `~/.config/recon/config.toml` with 0600 permissions.
 
 ---
 
@@ -822,8 +982,9 @@ recon/
 │   └── arbitrage.py         # Deduplication logic
 ├── clients/
 │   ├── __init__.py
-│   ├── base.py              # BaseClient, backoff, rate limit
-│   ├── patent_apis.py       # USPTO, EPO, WIPO, Google, Lens
+│   ├── base_scraper.py      # BaseScraper, rotating UA, delay, circuit breaker
+│   ├── scrapers.py          # DuckDuckGo, Google Patents, WIPO, USPTO scrapers
+│   ├── patent_apis.py       # EPOClient, LensOrgClient (Phase 3 opt-in)
 │   └── intelligence.py      # NIH, NSF, SEC, OpenAlex, arXiv, OpenCorporates
 ├── storage/
 │   ├── __init__.py
@@ -844,6 +1005,7 @@ recon/
 │   ├── test_claims_lazy_load.py
 │   ├── test_arbitrage.py
 │   ├── test_intelligence.py
+│   ├── test_scraper_resilience.py    # Phase A (scraper delay, rotating UA, circuit breaker)
 │   ├── test_cache_validation.py      # Phase C (planned)
 │   ├── test_performance.py           # Phase C (planned)
 │   └── test_error_handling.py        # Phase C (planned)
@@ -859,17 +1021,28 @@ recon/
 
 ```toml
 # ~/.config/recon/config.toml
+
 [api_keys]
-uspto = "YOUR_USPTO_KEY_HERE"
-epo_consumer_key = "YOUR_EPO_KEY"
-epo_consumer_secret = "YOUR_EPO_SECRET"
-lens = "YOUR_LENS_KEY"
+# Phase 3: Power-user API keys (strictly opt-in)
+# Default: all commented out -- tool works without any
+# uspto = "YOUR_USPTO_KEY_HERE"      # Only needed if USPTO free endpoint changes
+# epo_consumer_key = "YOUR_EPO_KEY"
+# epo_consumer_secret = "YOUR_EPO_SECRET"
+# lens = "YOUR_LENS_KEY"
 
 [behavior]
-default_sources = ["uspto", "wipo", "epo"]
+default_sources = ["ddg", "google_patents", "wipo", "uspto"]
 cache_ttl_days = 30
-rate_limit_headroom = 0.24
 max_results = 50
+
+[scraper]
+# Scraper resilience configuration
+random_delay_min = 1.0        # Minimum random sleep between requests (seconds)
+random_delay_max = 3.0        # Maximum random sleep between requests (seconds)
+ddg_max_concurrent = 2        # Max concurrent DuckDuckGo queries
+circuit_breaker_threshold = 3 # Consecutive failures before disabling a source
+user_agent_pool_size = 20     # Number of User-Agent strings to rotate through
+cache_stale_fallback = true   # Serve expired cache when all sources fail
 
 [display]
 terminal_protocol = "auto"  # auto, kitty, iterm2, sixel, fallback
@@ -877,9 +1050,11 @@ image_width = 800
 image_height = 600
 
 [advanced]
+# Only applies to Phase 3 API clients (EPO, Lens.org)
 backoff_base = 1.0
 backoff_max = 8.0
 max_retries = 4
+rate_limit_headroom = 0.24
 ```
 
 ---
@@ -891,5 +1066,6 @@ max_retries = 4
 | 0.1.0 | 2026-05-12 | Architect | Initial architecture draft |
 | 0.2.0 | 2026-05-16 | Architect | Added live API client patterns, singleton AsyncClient |
 | 1.0.0 | 2026-06-21 | Architect | Consolidated TAD with Mermaid diagram, data flow latency budgets, risk register, technical debt |
+| **2.0.0** | **2026-06-23** | **Lead Technical Architect** | **Architecture Pivot: Web-Scraper Default. DDG + Google Patents are now primary engines. EPO/Lens moved to Phase 3 opt-in. Added scraper resilience section (random delays, rotating UA, circuit breaker, 2-worker cap, aggressive caching). Added beautifulsoup4, lxml, duckduckgo_search to tech stack. Rewrote data flow, diagram, config schema, and risk register for scraper-default architecture. Zero-AI default preserved.** |
 
-**Next Review:** Upon EPO OAuth completion (M8) or discovery of new architectural constraint.
+**Next Review:** Upon scraper production validation (M6) or discovery of new architectural constraint.

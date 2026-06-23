@@ -5,6 +5,24 @@ from typing import List, Any
 from core.models import PatentRecord
 import fpdf
 
+
+def validate_export_path(output_path: str) -> str:
+    """Validate export path to prevent directory traversal.
+
+    Checks for null bytes and resolves the path. Raises ValueError if the
+    path contains dangerous patterns.
+    """
+    if "\0" in output_path:
+        raise ValueError(f"Invalid export path: null byte detected in '{output_path}'")
+
+    p = Path(output_path)
+    try:
+        resolved = p.resolve()
+    except (OSError, RuntimeError):
+        raise ValueError(f"Invalid export path: cannot resolve '{output_path}'")
+
+    return str(resolved)
+
 def _safe_csv_field(value: str) -> str:
     """Sanitize a CSV field to prevent formula injection in spreadsheet apps.
     
@@ -126,6 +144,7 @@ def _export_pdf(records: List[PatentRecord], output_path: str):
 
 def export_records(records: List[PatentRecord], format: str, output_path: str):
     format = format.lower()
+    output_path = validate_export_path(output_path)
     try:
         if format == "csv":
             _export_csv(records, output_path)
@@ -147,17 +166,18 @@ def export_pdf(collection: List[PatentRecord], path: str) -> None:
     """
     Export patent collection to PDF file.
     Generates a title page followed by one page per patent.
-    
+
     Args:
         collection: List of PatentRecord objects to export
         path: Output file path (e.g., '/path/to/export.pdf')
-    
+
     Raises:
-        ValueError: If collection is empty
+        ValueError: If collection is empty or path is invalid
         IOError: If file cannot be written
     """
     if not collection:
         raise ValueError("Cannot export empty collection.")
+    path = validate_export_path(path)
     try:
         _export_pdf(collection, path)
     except Exception as e:

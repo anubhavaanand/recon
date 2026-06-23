@@ -1,8 +1,40 @@
 import asyncio
+import logging
+import re
 from typing import List, Optional
 from core.models import PatentRecord
 from clients.patent_apis import USPTOClient, EPOClient, WIPOClient, LensClient, GooglePatentsClient, PatsnapClient
+from clients.circuit_breaker import CircuitOpenError
 from storage.cache import CacheDatabase
+
+logger = logging.getLogger("recon")
+
+_SHELL_CHARS_RE = re.compile(r'[;|&$`(){}\[\]<>#~!\\]')
+_CQL_WILDCARD_ALL_RE = re.compile(r'\*:\*')
+_MULTI_SPACE_RE = re.compile(r' {2,}')
+
+
+def sanitize_query(query: str) -> str:
+    """
+    Sanitize a user query before passing to external services.
+
+    Removes shell metacharacters and CQL injection patterns to prevent
+    command injection and search-engine query injection. Preserves
+    alphanumerics, spaces, quotes, hyphens, colons, slashes, and periods
+    needed for patent search syntax.
+    """
+    query = _SHELL_CHARS_RE.sub("", query)
+    query = _CQL_WILDCARD_ALL_RE.sub("", query)
+    query = _MULTI_SPACE_RE.sub(" ", query)
+    query = query.strip()
+    return query
+
+_SAFE_MODE_ACTIVE = False
+
+
+def is_safe_mode() -> bool:
+    return _SAFE_MODE_ACTIVE
+
 
 # Source registry: maps short name -> (display name, class)
 SOURCE_REGISTRY: dict[str, tuple[str, type]] = {
@@ -39,11 +71,18 @@ async def search_all(query: str, sources: Optional[List[str]] = None) -> List[Pa
     Fetches results concurrently from selected clients and merges them.
     Checks cache before hitting APIs.
 
+    When circuit breakers trip, degrades to Safe Mode: returns cache-only
+    results without crashing.
+
     Args:
         query: Search query string.
         sources: List of source names to include (e.g. ["uspto", "epo"]).
                  Defaults to all sources if None.
     """
+    global _SAFE_MODE_ACTIVE
+
+    query = sanitize_query(query)
+
     db = CacheDatabase()
     cached = db.get_cached_search(query)
     if cached:
@@ -69,20 +108,60 @@ async def search_all(query: str, sources: Optional[List[str]] = None) -> List[Pa
     results_nested = await asyncio.gather(*tasks, return_exceptions=True)
 
     all_records = []
+    circuit_triggered = False
     for res in results_nested:
         if isinstance(res, list):
             all_records.extend(res)
+        elif isinstance(res, CircuitOpenError):
+            circuit_triggered = True
+            logger.warning("Circuit breaker tripped during search", extra={"component": "search", "event": "circuit_open"})
+            print("WARN: Source unavailable (circuit breaker open). Falling back to cache.")
         elif isinstance(res, Exception):
             print(f"ERR: Search source failed: {res}")
 
     merged = sort_and_merge_results(all_records)
-    if merged:
+
+    if circuit_triggered:
+        _SAFE_MODE_ACTIVE = True
+        stale = _get_stale_cache(db, query)
+        if stale:
+            merged = sort_and_merge_results(stale)
+            print("WARN: SAFE MODE — serving stale cached results. Live sources may be blocked.")
+            logger.warning("Safe mode activated — serving stale cache", extra={"component": "search", "event": "safe_mode"})
+
+    if merged and not circuit_triggered:
         db.save_search_results(query, merged)
 
-    # Enrich top 5 results with cross-references (Constitution §6: Speed over Depth)
-    from core.enrichment import enrich_patent
-    top_n = merged[:5]
-    enrichment_tasks = [enrich_patent(r) for r in top_n]
-    await asyncio.gather(*enrichment_tasks, return_exceptions=True)
+    if merged:
+        from core.enrichment import enrich_patent
+        top_n = merged[:5]
+        enrichment_tasks = [enrich_patent(r) for r in top_n]
+        await asyncio.gather(*enrichment_tasks, return_exceptions=True)
 
     return merged
+
+
+def _get_stale_cache(db: CacheDatabase, query: str) -> Optional[List[PatentRecord]]:
+    from storage.cache import _query_hash
+    import json
+    from core.models import CrossReference
+
+    qhash = _query_hash(query)
+    with db.get_connection() as conn:
+        row = conn.execute(
+            "SELECT results_json FROM search_results WHERE query_hash = ?",
+            (qhash,),
+        ).fetchone()
+
+    if not row:
+        return None
+
+    data_list = json.loads(row["results_json"])
+    records = []
+    for data_dict in data_list:
+        if "cross_references" in data_dict:
+            data_dict["cross_references"] = [
+                CrossReference(**cr) for cr in data_dict["cross_references"]
+            ]
+        records.append(PatentRecord(**data_dict))
+    return records if records else None

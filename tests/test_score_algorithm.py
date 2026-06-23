@@ -12,9 +12,10 @@ from core.scoring import (
 from core.models import CrossReference
 
 
-def _ref(source: str, conf: float = 100.0) -> CrossReference:
+def _ref(source: str, conf: float = 100.0, date: str | None = None) -> CrossReference:
     return CrossReference(
         source=source,
+        date=date,
         url=f"https://example.com/{source}",
         metadata={"confidence": conf},
     )
@@ -44,17 +45,25 @@ def test_score_grant_plus_corp():
     assert calculate_signal_score(refs) == 40
 
 def test_score_three_signals():
-    # NIH (grant) + SEC (corp) + OpenAlex (academic)
-    # NIH + OpenAlex also triggers temporal proximity → 4 signals = 80
-    refs = [_ref("NIH"), _ref("SEC"), _ref("OpenAlex")]
-    score = calculate_signal_score(refs)
-    assert score == 80  # grant + corp + academic + temporal (NIH+OA) = 4×20
+    # NIH (grant) + SEC (corp) + OpenAlex (academic) + temporal (within 2yr)
+    refs = [
+        _ref("NIH", date="2021-06-15"),
+        _ref("SEC"),
+        _ref("OpenAlex", date="2021-06-15"),
+    ]
+    score = calculate_signal_score(refs, filing_date="2022-06-15")
+    assert score == 80  # grant + corp + academic + temporal = 4×20
 
 def test_score_four_signals_with_temporal():
-    # grant + academic → temporal proximity detected
-    refs = [_ref("NIH"), _ref("SEC"), _ref("OpenAlex"), _ref("Supply Chain")]
-    score = calculate_signal_score(refs)
-    assert score >= 80  # 4 signals + temporal proximity
+    # grant + academic with dates → temporal proximity detected
+    refs = [
+        _ref("NIH", date="2021-06-15"),
+        _ref("SEC"),
+        _ref("OpenAlex", date="2021-06-15"),
+        _ref("Supply Chain"),
+    ]
+    score = calculate_signal_score(refs, filing_date="2022-06-15")
+    assert score == 100  # grant + corp + academic + temporal + supply = 5×20
 
 def test_score_max_100():
     refs = [_ref("NIH"), _ref("SEC"), _ref("OpenAlex"), _ref("arXiv"), _ref("opencorporates")]
@@ -63,14 +72,22 @@ def test_score_max_100():
 
 def test_score_abandoned_penalty():
     # NIH+SEC+OpenAlex = 80 (includes temporal). 80 - 30 = 50
-    refs = [_ref("NIH"), _ref("SEC"), _ref("OpenAlex")]
-    score = calculate_signal_score(refs, status="ABANDONED")
+    refs = [
+        _ref("NIH", date="2021-06-15"),
+        _ref("SEC"),
+        _ref("OpenAlex", date="2021-06-15"),
+    ]
+    score = calculate_signal_score(refs, status="ABANDONED", filing_date="2022-06-15")
     assert score == 50
 
 def test_score_shell_company_penalty():
     # NIH+SEC+OpenAlex = 80 (includes temporal). 80 - 20 = 60
-    refs = [_ref("NIH"), _ref("SEC"), _ref("OpenAlex")]
-    score = calculate_signal_score(refs, shell_company=True)
+    refs = [
+        _ref("NIH", date="2021-06-15"),
+        _ref("SEC"),
+        _ref("OpenAlex", date="2021-06-15"),
+    ]
+    score = calculate_signal_score(refs, shell_company=True, filing_date="2022-06-15")
     assert score == 60
 
 def test_score_combined_penalties_floored_at_zero():
@@ -79,8 +96,16 @@ def test_score_combined_penalties_floored_at_zero():
     assert score == 0  # 20 - 30 - 20 = -30 → clamped to 0
 
 def test_score_never_exceeds_100():
-    refs = [_ref(src) for src in ["NIH", "SEC", "OpenAlex", "arXiv", "opencorporates", "DOE", "NSF"]]
-    score = calculate_signal_score(refs)
+    refs = [
+        _ref("NIH", date="2021-06-15"),
+        _ref("SEC"),
+        _ref("OpenAlex", date="2021-06-15"),
+        _ref("arXiv"),
+        _ref("opencorporates"),
+        _ref("DOE"),
+        _ref("NSF"),
+    ]
+    score = calculate_signal_score(refs, filing_date="2022-06-15")
     assert score == 100
 
 

@@ -3,27 +3,97 @@
 Uses ddgs (DuckDuckGo) for discovery, httpx for fetching, and BeautifulSoup
 for parsing. These sources are free but fragile -- HTML structure changes may
 break parsing. In that case, they gracefully return empty results.
+
+Circuit Breakers protect DuckDuckGo and Google Patents from 429/403 storms.
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from typing import List
 
 import httpx
 from bs4 import BeautifulSoup
 
+from clients.circuit_breaker import CircuitBreaker, CircuitOpenError
 from core.models import PatentRecord
+from core.search import sanitize_query
+
+logger = logging.getLogger("recon")
 
 
-async def _fetch_html(url: str, timeout: float = 15.0) -> str | None:
+class TokenBucket:
+    """Async rate limiter using the token bucket algorithm.
+
+    Maintains 24% headroom: capacity defaults to 76 tokens / 60s refill.
+    """
+
+    def __init__(self, capacity: int = 76, refill_interval: float = 60.0):
+        self.capacity = capacity
+        self._tokens = float(capacity)
+        self._refill_rate = capacity / refill_interval
+        self._last_refill = 0.0
+        self._lock = asyncio.Lock()
+
+    async def acquire(self) -> None:
+        """Wait until a token is available, then consume it."""
+        async with self._lock:
+            now = asyncio.get_event_loop().time()
+            if self._last_refill == 0.0:
+                self._last_refill = now
+            elapsed = now - self._last_refill
+            self._tokens = min(self.capacity, self._tokens + elapsed * self._refill_rate)
+            self._last_refill = now
+
+            if self._tokens < 1.0:
+                wait = (1.0 - self._tokens) / self._refill_rate
+                await asyncio.sleep(wait)
+                self._tokens = 0.0
+            else:
+                self._tokens -= 1.0
+
+
+_egress_bucket: TokenBucket | None = None
+
+
+def _get_egress_bucket() -> TokenBucket:
+    global _egress_bucket
+    if _egress_bucket is None:
+        _egress_bucket = TokenBucket()
+    return _egress_bucket
+_ddg_breaker = CircuitBreaker(name="duckduckgo", threshold=3, reset_timeout=60)
+_google_breaker = CircuitBreaker(name="google_patents", threshold=3, reset_timeout=60)
+
+
+async def _ddg_search(query: str, max_results: int = 5) -> list:
+    await _get_egress_bucket().acquire()
+    _ddg_breaker.check()
+    from ddgs import DDGS
+
+    with DDGS() as ddgs:
+        return list(ddgs.text(query, max_results=max_results))
+
+
+async def _fetch_html(
+    url: str, timeout: float = 15.0, breaker: CircuitBreaker | None = None
+) -> str | None:
     """Fetch HTML from a URL using httpx."""
+    await _get_egress_bucket().acquire()
+    if breaker:
+        breaker.check()
     try:
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
             resp.raise_for_status()
-            return resp.text
+        if breaker:
+            breaker.record_success()
+        return resp.text
+    except httpx.HTTPStatusError as e:
+        if breaker and e.response.status_code in (429, 403):
+            breaker.record_failure()
+        return None
     except Exception:
         return None
 
@@ -148,13 +218,15 @@ def _parse_wipo_patent_html(html: str) -> dict | None:
     }
 
 
-async def _fetch_patents_from_urls(urls: list[str], parser_fn, timeout: float = 8.0) -> list[PatentRecord]:
+async def _fetch_patents_from_urls(
+    urls: list[str], parser_fn, timeout: float = 8.0, breaker: CircuitBreaker | None = None
+) -> list[PatentRecord]:
     """Fetch patent pages concurrently and parse them."""
     seen_ids: set[str] = set()
     records: list[PatentRecord] = []
 
     async def _fetch_and_parse(url: str) -> PatentRecord | None:
-        html = await _fetch_html(url, timeout=timeout)
+        html = await _fetch_html(url, timeout=timeout, breaker=breaker)
         if not html:
             return None
         parsed = parser_fn(html)
@@ -193,11 +265,12 @@ async def _fetch_patents_from_urls(urls: list[str], parser_fn, timeout: float = 
 
 async def search_google_patents(query: str) -> List[PatentRecord]:
     """Search Google Patents via DuckDuckGo discovery + HTML scraping."""
+    query = sanitize_query(query)
     try:
-        from ddgs import DDGS
-
-        with DDGS() as ddgs:
-            results = list(ddgs.text(f"site:patents.google.com {query}", max_results=5))
+        results = await _ddg_search(f"site:patents.google.com {query}", max_results=5)
+    except CircuitOpenError:
+        logger.warning("DDG circuit breaker OPEN, skipping Google Patents discovery")
+        return []
     except Exception:
         return []
 
@@ -207,7 +280,9 @@ async def search_google_patents(query: str) -> List[PatentRecord]:
         if "patents.google.com/patent/" in href:
             urls.append(href)
 
-    return await _fetch_patents_from_urls(urls, _parse_google_patent_html)
+    return await _fetch_patents_from_urls(
+        urls, _parse_google_patent_html, breaker=_google_breaker
+    )
 
 
 async def search_wipo_patents(query: str) -> List[PatentRecord]:
@@ -217,11 +292,12 @@ async def search_wipo_patents(query: str) -> List[PatentRecord]:
     the HTML directly yields empty data. Instead we use DuckDuckGo search
     result snippets which include title, description, and patent number.
     """
+    query = sanitize_query(query)
     try:
-        from ddgs import DDGS
-
-        with DDGS() as ddgs:
-            results = list(ddgs.text(f"site:patentscope.wipo.int {query}", max_results=5))
+        results = await _ddg_search(f"site:patentscope.wipo.int {query}", max_results=5)
+    except CircuitOpenError:
+        logger.warning("DDG circuit breaker OPEN, skipping WIPO discovery")
+        return []
     except Exception:
         return []
 
@@ -325,11 +401,12 @@ async def search_lens_patents(query: str) -> List[PatentRecord]:
     Lens.org patent pages are JS-rendered and not accessible via httpx scraping.
     We use DDGS search result snippets to extract patent numbers and titles.
     """
+    query = sanitize_query(query)
     try:
-        from ddgs import DDGS
-
-        with DDGS() as ddgs:
-            results = list(ddgs.text(f"site:lens.org/lens/patent {query}", max_results=5))
+        results = await _ddg_search(f"site:lens.org/lens/patent {query}", max_results=5)
+    except CircuitOpenError:
+        logger.warning("DDG circuit breaker OPEN, skipping Lens discovery")
+        return []
     except Exception:
         return []
 
@@ -411,11 +488,12 @@ async def search_epo_patents(query: str) -> List[PatentRecord]:
     via httpx scraping. We use DDGS search result snippets to extract patent
     numbers and titles.
     """
+    query = sanitize_query(query)
     try:
-        from ddgs import DDGS
-
-        with DDGS() as ddgs:
-            results = list(ddgs.text(f"site:register.epo.org {query}", max_results=5))
+        results = await _ddg_search(f"site:register.epo.org {query}", max_results=5)
+    except CircuitOpenError:
+        logger.warning("DDG circuit breaker OPEN, skipping EPO discovery")
+        return []
     except Exception:
         return []
 

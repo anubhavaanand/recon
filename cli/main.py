@@ -20,6 +20,8 @@ def default_behavior(ctx: typer.Context):
         ui.run()
 
 app.add_typer(config_app, name="config", help="Manage API keys and settings.")
+admin_app = typer.Typer()
+app.add_typer(admin_app, name="admin", help="Database admin and cache management commands.")
 collection_app = typer.Typer()
 app.add_typer(collection_app, name="collection", help="Manage saved patent collection.")
 console = Console()
@@ -271,6 +273,61 @@ def config_test():
             console.print(f"[red]✗ {patsnap_msg}[/red]")
             
     asyncio.run(run_tests())
+
+# ── Admin commands ─────────────────────────────────────────
+
+@admin_app.command("stats")
+def admin_stats():
+    """Print cache health and row counts for all tables."""
+    db = CacheDatabase()
+    health = db.record_cache_health()
+    table = Table(title="Cache Health")
+    table.add_column("Table", style="cyan")
+    table.add_column("Row Count", style="green")
+    table.add_column("Corrupt", style="red")
+    table.add_column("Expired", style="yellow")
+    for entry in health.get("tables", []):
+        table.add_row(
+            entry["table"],
+            str(entry.get("row_count", "?")),
+            str(entry.get("corrupt", "?")),
+            str(entry.get("expired_rows", "?")),
+        )
+    console.print(table)
+    if "db_size_mb" in health:
+        console.print(f"\nDB size: {health['db_size_mb']:.1f} MB")
+    if "avg_query_time_ms" in health:
+        console.print(f"Avg query time: {health['avg_query_time_ms']:.1f} ms")
+
+
+@admin_app.command("cache-clear")
+def admin_cache_clear(
+    older_than: int = typer.Option(30, "--older-than", help="Delete cached results older than N days."),
+):
+    """Remove old cached search results."""
+    from datetime import datetime, timedelta
+    db = CacheDatabase()
+    cutoff = (datetime.utcnow() - timedelta(days=older_than)).isoformat()
+    with db.get_connection() as conn:
+        cursor = conn.execute(
+            "DELETE FROM search_results WHERE last_accessed < ?",
+            (cutoff,),
+        )
+        conn.commit()
+        deleted = cursor.rowcount
+    console.print(f"[green]Deleted {deleted} cached results older than {older_than} days.[/green]")
+
+
+@admin_app.command("cache-vacuum")
+def admin_cache_vacuum():
+    """Run SQLite VACUUM to reclaim disk space."""
+    db = CacheDatabase()
+    result = db.vacuum()
+    freed_mb = result["freed_bytes"] / 1024 / 1024
+    before_mb = result["before_bytes"] / 1024 / 1024
+    after_mb = result["after_bytes"] / 1024 / 1024
+    console.print(f"[green]VACUUM complete: {before_mb:.1f} MB → {after_mb:.1f} MB (freed {freed_mb:.1f} MB)[/green]")
+
 
 @collection_app.command("list")
 def collection_list():

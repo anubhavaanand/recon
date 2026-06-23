@@ -14,8 +14,9 @@ Penalties:
   Shell company      : -20 (detected via OpenCorporates signal)
 """
 
+from datetime import datetime, timedelta
 from rapidfuzz import fuzz
-from typing import List
+from typing import List, Optional
 from core.models import CrossReference, PatentRecord
 
 # ── Signal source categories ─────────────────────────────
@@ -23,6 +24,8 @@ _GRANT_SOURCES   = {"nih", "nsf", "doe", "nih reporter", "nsf awards"}
 _CORP_SOURCES    = {"sec", "edgar", "10-k", "8-k"}
 _ACADEMIC_SOURCES = {"openalex", "arxiv", "openalexs", "arxiv preprints"}
 _SUPPLY_SOURCES  = {"opencorporates", "supply chain", "duns"}
+
+_TEMPORAL_WINDOW = timedelta(days=730)  # 2 years
 
 
 def match_entity(entity1: str, entity2: str) -> float:
@@ -32,10 +35,42 @@ def match_entity(entity1: str, entity2: str) -> float:
     return fuzz.partial_ratio(entity1, entity2)
 
 
+def _parse_date(date_str: str) -> Optional[datetime]:
+    """Parse an ISO-format date string. Returns None on failure."""
+    try:
+        return datetime.strptime(date_str[:10], "%Y-%m-%d")
+    except (ValueError, TypeError):
+        return None
+
+
+def _check_temporal_proximity(
+    cross_references: List[CrossReference],
+    filing_date: str,
+) -> bool:
+    """
+    Returns True if any cross-reference has a date within +/- 2 years
+    of the patent filing date.
+    """
+    filing_dt = _parse_date(filing_date)
+    if filing_dt is None:
+        return False
+
+    for ref in cross_references:
+        if not ref.date:
+            continue
+        ref_dt = _parse_date(ref.date)
+        if ref_dt is None:
+            continue
+        if abs((ref_dt - filing_dt).days) <= _TEMPORAL_WINDOW.days:
+            return True
+    return False
+
+
 def calculate_signal_score(
     cross_references: List[CrossReference],
     status: str = "active",
     shell_company: bool = False,
+    filing_date: str = "",
 ) -> int:
     """
     PRD §5.5 compliant score calculation.
@@ -52,8 +87,8 @@ def calculate_signal_score(
     has_academic   = bool(sources_lower & _ACADEMIC_SOURCES)
     has_supply     = bool(sources_lower & _SUPPLY_SOURCES)
 
-    # Signal 4: temporal proximity — heuristic: if grant + academic both present
-    has_temporal = has_grant and has_academic
+    # Signal 4: temporal proximity — datetime math against filing date
+    has_temporal = _check_temporal_proximity(cross_references, filing_date)
 
     signals = [has_grant, has_corporate, has_academic, has_temporal, has_supply]
     score = sum(20 for s in signals if s)

@@ -51,24 +51,24 @@ class CommandPalette(Static):
             scored.sort(key=lambda x: x[0], reverse=True)
             self._filtered = [(c, d, a) for _, c, d, a in scored]
         self._selected = 0
-        self._render()
+        self._update_content()
 
     def select_next(self) -> None:
         if self._filtered:
             self._selected = (self._selected + 1) % len(self._filtered)
-            self._render()
+            self._update_content()
 
     def select_prev(self) -> None:
         if self._filtered:
             self._selected = (self._selected - 1) % len(self._filtered)
-            self._render()
+            self._update_content()
 
     def selected_action(self) -> str | None:
         if self._filtered and 0 <= self._selected < len(self._filtered):
             return self._filtered[self._selected][2]
         return None
 
-    def _render(self) -> None:
+    def _update_content(self) -> None:
         lines = []
         for i, (cmd, desc, _) in enumerate(self._filtered):
             marker = "\u25b8" if i == self._selected else " "
@@ -87,4 +87,4 @@ class CommandPalette(Static):
         if value:
             self._filtered = list(self._commands)
             self._selected = 0
-            self._render()
+            self._update_content()

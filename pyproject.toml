@@ -33,6 +33,7 @@ dependencies = [
     "beautifulsoup4>=4.12",
     "lxml>=5.0",
     "ddgs>=1.0",
+    "cryptography>=41.0",
 ]
 
 [project.urls]
