@@ -141,6 +141,34 @@ async def _search_nih(query: str) -> Optional[CrossReference]:
         pass
     return None
 
+async def _search_sec(query: str) -> Optional[CrossReference]:
+    try:
+        url = f"https://efts.sec.gov/LATEST/search-index?q={query}"
+        headers = {
+            "User-Agent": "RECON Research Tool recon@example.com",
+            "Accept-Encoding": "gzip, deflate",
+            "Host": "efts.sec.gov"
+        }
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(url, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                hits = data.get("hits", {}).get("hits", [])
+                if hits:
+                    doc = hits[0]
+                    src = doc.get("_source", {})
+                    ciks = src.get("ciks", [])
+                    cik = ciks[0] if ciks else ""
+                    return CrossReference(
+                        source="sec",
+                        url=f"https://www.sec.gov/edgar/browse/?CIK={cik}",
+                        date=src.get("file_date", ""),
+                        metadata={"title": src.get("display_names", [""])[0], "snippet": ""}
+                    )
+    except Exception:
+        pass
+    return None
+
 def _build_search_query(record: PatentRecord) -> Optional[str]:
     assignee = record.assignee
     if assignee and assignee not in ("[?]", "UNKNOWN", ""):
@@ -171,6 +199,7 @@ async def enrich_patent(record: PatentRecord) -> PatentRecord:
             _search_nsf(query),
             _search_doe(query),
             _search_nih(query),
+            _search_sec(query),
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
