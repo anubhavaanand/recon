@@ -120,6 +120,27 @@ async def _search_ddg_signal(source: str, domain_query: str, search_term: str) -
         pass
     return None
 
+async def _search_nih(query: str) -> Optional[CrossReference]:
+    try:
+        url = "https://api.reporter.nih.gov/v2/projects/search"
+        payload = {"criteria": {"advanced_text_search": {"operator": "and", "search_terms": [query]}}}
+        async with httpx.AsyncClient(timeout=8.0, headers={"User-Agent": "RECON/1.0"}) as client:
+            resp = await client.post(url, json=payload)
+            if resp.status_code == 200:
+                data = resp.json()
+                results = data.get("results", [])
+                if results:
+                    proj = results[0]
+                    return CrossReference(
+                        source="nih",
+                        url=f"https://reporter.nih.gov/project-details/{proj.get('core_project_num')}",
+                        date=proj.get("award_notice_date", "")[:10],
+                        metadata={"title": proj.get("project_title", ""), "snippet": proj.get("abstract_text", "")[:200]}
+                    )
+    except Exception:
+        pass
+    return None
+
 def _build_search_query(record: PatentRecord) -> Optional[str]:
     assignee = record.assignee
     if assignee and assignee not in ("[?]", "UNKNOWN", ""):
@@ -149,9 +170,7 @@ async def enrich_patent(record: PatentRecord) -> PatentRecord:
             _search_arxiv(query),
             _search_nsf(query),
             _search_doe(query),
-            _search_ddg_signal("sec", "site:sec.gov", query),
-            _search_ddg_signal("opencorporates", "site:opencorporates.com", query),
-            _search_ddg_signal("nih", "site:reporter.nih.gov", query),
+            _search_nih(query),
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
