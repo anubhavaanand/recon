@@ -1,22 +1,30 @@
 """Web scrapers for patent sources without official APIs.
 
-Uses ddgs (DuckDuckGo) for discovery, httpx for fetching, and BeautifulSoup
-for parsing. These sources are free but fragile -- HTML structure changes may
-break parsing. In that case, they gracefully return empty results.
+Uses ddgs (DuckDuckGo) for discovery, BaseScraper for resilient fetching,
+and BeautifulSoup for parsing. These sources are free but fragile --
+HTML structure changes may break parsing. In that case, they gracefully
+return empty results.
 
-Circuit Breakers protect DuckDuckGo and Google Patents from 429/403 storms.
+Resilience (per architecture.md §6.2):
+  - Rotating User-Agents (20+ modern browser UA strings)
+  - Random jitter (asyncio.sleep(random.uniform(1.0, 3.0)))
+  - Max 2 concurrent DDG workers (asyncio.Semaphore(2))
+  - Per-source circuit breakers (429 -> fail fast, trip after 3)
+  - No exponential backoff -- scrapers fail fast on 429
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import re
 from typing import List
 
 import httpx
 from bs4 import BeautifulSoup
 
+from clients.base_scraper import BaseScraper, RateLimitedError, SourceDisabledError
 from clients.circuit_breaker import CircuitBreaker, CircuitOpenError
 from core.models import PatentRecord
 from core.search import sanitize_query
@@ -24,77 +32,35 @@ from core.search import sanitize_query
 logger = logging.getLogger("recon")
 
 
-class TokenBucket:
-    """Async rate limiter using the token bucket algorithm.
-
-    Maintains 24% headroom: capacity defaults to 76 tokens / 60s refill.
-    """
-
-    def __init__(self, capacity: int = 76, refill_interval: float = 60.0):
-        self.capacity = capacity
-        self._tokens = float(capacity)
-        self._refill_rate = capacity / refill_interval
-        self._last_refill = 0.0
-        self._lock = asyncio.Lock()
-
-    async def acquire(self) -> None:
-        """Wait until a token is available, then consume it."""
-        async with self._lock:
-            now = asyncio.get_event_loop().time()
-            if self._last_refill == 0.0:
-                self._last_refill = now
-            elapsed = now - self._last_refill
-            self._tokens = min(self.capacity, self._tokens + elapsed * self._refill_rate)
-            self._last_refill = now
-
-            if self._tokens < 1.0:
-                wait = (1.0 - self._tokens) / self._refill_rate
-                await asyncio.sleep(wait)
-                self._tokens = 0.0
-            else:
-                self._tokens -= 1.0
-
-
-_egress_bucket: TokenBucket | None = None
-
-
-def _get_egress_bucket() -> TokenBucket:
-    global _egress_bucket
-    if _egress_bucket is None:
-        _egress_bucket = TokenBucket()
-    return _egress_bucket
+_SCRAPER = BaseScraper(source_name="scrapers")
 _ddg_breaker = CircuitBreaker(name="duckduckgo", threshold=3, reset_timeout=60)
 _google_breaker = CircuitBreaker(name="google_patents", threshold=3, reset_timeout=60)
 
 
 async def _ddg_search(query: str, max_results: int = 5) -> list:
-    await _get_egress_bucket().acquire()
+    """Search DuckDuckGo via ddgs library, capped at 2 concurrent workers."""
     _ddg_breaker.check()
-    from ddgs import DDGS
-
-    with DDGS() as ddgs:
-        return list(ddgs.text(query, max_results=max_results))
+    await asyncio.sleep(random.uniform(1.0, 3.0))
+    async with BaseScraper._ddg_semaphore:
+        from ddgs import DDGS
+        with DDGS() as ddgs:
+            return list(ddgs.text(query, max_results=max_results))
 
 
 async def _fetch_html(
     url: str, timeout: float = 15.0, breaker: CircuitBreaker | None = None
 ) -> str | None:
-    """Fetch HTML from a URL using httpx."""
-    await _get_egress_bucket().acquire()
+    """Fetch HTML with resilience. Returns None on failure."""
     if breaker:
         breaker.check()
     try:
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-            resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
-            resp.raise_for_status()
+        resp = await _SCRAPER._rate_limited_request(url, source=_SCRAPER.source_name)
         if breaker:
             breaker.record_success()
         return resp.text
-    except httpx.HTTPStatusError as e:
-        if breaker and e.response.status_code in (429, 403):
+    except (RateLimitedError, SourceDisabledError, httpx.HTTPError):
+        if breaker:
             breaker.record_failure()
-        return None
-    except Exception:
         return None
 
 
