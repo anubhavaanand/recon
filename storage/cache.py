@@ -643,7 +643,7 @@ class CacheDatabase:
     # ── eviction ─────────────────────────────────────────────────────────────
 
     def enforce_eviction_policy(self, max_db_mb: int = 1000) -> dict:
-        stats = {"deleted_expired": 0, "deleted_lru": 0, "deleted_history": 0, "db_size_mb": 0.0}
+        stats = {"deleted_expired": 0, "deleted_lru": 0, "deleted_history": 0, "db_size_mb": 0.0, "vacuum_freed_mb": 0.0}
 
         with contextlib.closing(self.get_connection()) as conn:
             with conn:
@@ -676,6 +676,9 @@ class CacheDatabase:
                     stats["deleted_lru"] = cursor.rowcount
 
             conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+
+            vacuum_result = self.vacuum()
+            stats["vacuum_freed_mb"] = round(vacuum_result["freed_bytes"] / (1024 * 1024), 2)
 
         return stats
 
