@@ -126,3 +126,35 @@ async def test_reader_mode_push():
         await pilot.press("r")
         await pilot.pause(2.5)
         assert isinstance(pilot.app.screen, ReaderModeScreen)
+
+
+@pytest.mark.asyncio
+async def test_theme_validation():
+    """Submitting /theme commands updates status or changes classes on SearchScreen."""
+    from tui.app import ReconApp
+    from tui.screens import SearchScreen
+    async with ReconApp().run_test(size=(140, 40)) as pilot:
+        await pilot.app.switch_screen(SearchScreen())
+        await pilot.pause(0.5)
+
+        # 1. Invalid theme /theme invalid should show error
+        await pilot.click("#search_input")
+        for ch in "/theme invalid":
+            await pilot.press(ch)
+        await pilot.press("enter")
+        await pilot.pause(0.5)
+        
+        status_top = pilot.app.screen.query_one("#status_top", Static)
+        assert "ERR: Choose theme" in str(status_top.content)
+
+        # 2. Valid theme /theme arctic-frost should apply class and clear input
+        search_input = pilot.app.screen.query_one("#search_input", Input)
+        search_input.value = ""
+        await pilot.click("#search_input")
+        for ch in "/theme arctic-frost":
+            await pilot.press(ch)
+        await pilot.press("enter")
+        await pilot.pause(0.5)
+        
+        assert "theme-arctic-frost" in pilot.app.screen.classes
+        assert search_input.value == ""

@@ -789,7 +789,7 @@ class SearchScreen(Screen):
             )
 
         palette = self.query_one("#command_palette", CommandPalette)
-        if value.startswith("/"):
+        if value.startswith("/") and " " not in value:
             palette.is_active = True
             palette.remove_class("hidden")
             palette.filter(value)
@@ -800,14 +800,29 @@ class SearchScreen(Screen):
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         query = event.value.strip()
 
-        if query.startswith("/theme "):
-            theme_name = query[len("/theme "):].strip().lower().replace(" ", "-")
+        if query == "/theme" or query.startswith("/theme "):
+            theme_name = query[6:].strip().lower().replace(" ", "-")
+            valid_themes = [
+                "arctic-frost", "botanical-garden", "desert-rose", "forest-canopy",
+                "golden-hour", "midnight-galaxy", "modern-minimalist", "ocean-depths",
+                "sunset-boulevard", "tech-innovation"
+            ]
+            if not theme_name or theme_name not in valid_themes:
+                self.query_one("#status_top", Static).update(
+                    f"ERR: Choose theme: {', '.join(valid_themes)}"
+                )
+                search_input = self.query_one("#search_input", Input)
+                search_input.value = "/theme "
+                search_input.focus()
+                event.stop()
+                return
+
             for cls in list(self.classes):
                 if cls.startswith("theme-"):
                     self.remove_class(cls)
             self.add_class(f"theme-{theme_name}")
-            self.query_one("#status_top").update(f"Theme changed to {theme_name}")
-            search_input = self.query_one("#search_input")
+            self.query_one("#status_top", Static).update(f"Theme changed to {theme_name}")
+            search_input = self.query_one("#search_input", Input)
             search_input.value = ""
             event.stop()
             return
@@ -1239,7 +1254,7 @@ class SearchScreen(Screen):
             result_list.mount(ResultListItem(record, i))
         
         self.query_one("#status_top", Static).update(
-            self.query_one("#status_top", Static).renderable.replace(f"sort: {self._sort_mode}", "") + f"sort: {self._sort_mode}"
+            str(self.query_one("#status_top", Static).content).replace(f"sort: {self._sort_mode}", "") + f"sort: {self._sort_mode}"
         )
         if self._results:
             result_list.index = 0
@@ -1266,7 +1281,7 @@ class SearchScreen(Screen):
         self.app.notify(f"Semantic Search {state}")
 
         top = self.query_one("#status_top", Static)
-        text = str(top.renderable)
+        text = str(top.content)
         if self._semantic_enabled and "[Semantic]" not in text:
             top.update(text.replace("results", "results  │  [Semantic]"))
         elif not self._semantic_enabled and "[Semantic]" in text:
