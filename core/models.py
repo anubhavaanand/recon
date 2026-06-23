@@ -56,7 +56,11 @@ class PatentRecord:
             text = re.sub(r'([A-Za-z0-9]+)([\u4e00-\u9fff\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af])', r'\1 \2', text)
             # 4. Fix missing spaces between CJK characters and English words (e.g. 本发明The -> 本发明 The)
             text = re.sub(r'([\u4e00-\u9fff\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af])([A-Za-z0-9])', r'\1 \2', text)
+            # 5. Insert zero-width spaces between CJK characters to allow clean line wrapping (Bug 8)
+            cjk_char = r'([\u4e00-\u9fff\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af])'
+            text = re.sub(cjk_char + r'(?=' + cjk_char + r')', r'\1' + '\u200b', text)
             return text
+
 
         self.title = clean_text(self.title) if self.title else "[?]"
         self.assignee = clean_text(self.assignee) if self.assignee else "[?]"

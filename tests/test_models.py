@@ -37,7 +37,8 @@ def test_patent_record_text_cleanup():
     assert record.id == "US1234567A"
     # Check spacing fixes
     assert record.title == "Test Title Spacing"
-    assert record.assignee == "Test Corp Chinese 本发明"
-    assert record.abstract == "Abstract: Translated from Chinese 本发明涉及一种航空发动机。 The invention relates to an engine."
-    assert record.claims == ["Claim 1 Abstract: Translated", "本发明 The invention"]
+    assert record.assignee == "Test Corp Chinese 本\u200b发\u200b明"
+    assert record.abstract == "Abstract: Translated from Chinese 本\u200b发\u200b明\u200b涉\u200b及\u200b一\u200b种\u200b航\u200b空\u200b发\u200b动\u200b机\u200b。 The invention relates to an engine."
+    assert record.claims == ["Claim 1 Abstract: Translated", "本\u200b发\u200b明 The invention"]
+
 
