@@ -32,7 +32,13 @@ def _render_signal_dots(refs) -> str:
 
 def _render_status_pill(status: str) -> str:
     """Return colored status pill."""
-    s = status.upper()
+    if not status:
+        return "[?]"
+    import re
+    # Strip bullet points, question marks, brackets, and extra spaces
+    s = re.sub(r'[●•\?\[\]]', '', status).strip().upper()
+    if not s or s in ("UNKNOWN", ""):
+        return "[?]"
     if s in ("ACTIVE", "GRANTED"):
         return f"● {s}"
     elif s in ("EXPIRED",):

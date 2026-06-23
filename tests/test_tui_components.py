@@ -72,8 +72,12 @@ class TestInfoTab:
         assert "50/100" in bar
         dots = _render_signal_dots([])
         assert "No signals" in dots
-        pill = _render_status_pill("active")
-        assert "ACTIVE" in pill
+        assert _render_status_pill("active") == "● ACTIVE"
+        assert _render_status_pill("● Active") == "● ACTIVE"
+        assert _render_status_pill("[?] ● Active") == "● ACTIVE"
+        assert _render_status_pill("[?]") == "[?]"
+        assert _render_status_pill("UNKNOWN") == "[?]"
+        assert _render_status_pill("") == "[?]"
 
 
 class TestClaimsTab:
