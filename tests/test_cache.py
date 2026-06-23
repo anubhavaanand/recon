@@ -83,3 +83,52 @@ def test_search_cache_expiration(tmp_path, monkeypatch):
 
     cached = cache.get_cached_search(query)
     assert cached is None
+
+
+def test_patent_id_normalization(tmp_path):
+    db_path = tmp_path / "test_cache.db"
+    cache = CacheDatabase(db_path=str(db_path))
+
+    # Save with non-normalized ID
+    raw_id = "us-11,000,000_b2"
+    norm_id = "US11000000B2"
+    record = PatentRecord(
+        id=raw_id,
+        title="Test Patent",
+        assignee="Test Assignee",
+        dates={"filed": "2020-01-01"},
+        abstract="Abstract",
+        claims=[],
+        image_urls=[],
+        status="ACTIVE",
+        family_id="F123",
+    )
+
+    # Test collections normalization
+    cache.save_to_collection(record)
+    saved = cache.get_collection()
+    assert len(saved) == 1
+    assert saved[0].id == norm_id
+
+    # Test citations normalization
+    cache.save_citations(raw_id, cited_by=["us-123"], cites=["us-456"])
+    citations = cache.get_citations(norm_id)
+    assert citations is not None
+    assert citations["patent_id"] == norm_id
+
+    citations_lower = cache.get_citations("US-11000000-B2")
+    assert citations_lower is not None
+
+    # Test enrichment cache normalization
+    from core.models import CrossReference
+    ref = CrossReference(source="arxiv", url="http://arxiv.org", date="2020", metadata={})
+    cache.save_enrichment_cache(raw_id, [ref])
+    enriched = cache.get_enrichment_cache("US-11000000-B2")
+    assert enriched is not None
+    assert len(enriched) == 1
+
+    # Test embeddings normalization
+    cache.save_embedding(raw_id, [0.1, 0.2, 0.3])
+    emb = cache.get_embedding("US-11000000-B2")
+    assert emb == [0.1, 0.2, 0.3]
+

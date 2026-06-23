@@ -217,6 +217,12 @@ def _query_hash(query: str) -> str:
     return hashlib.sha256(query.strip().lower().encode("utf-8")).hexdigest()
 
 
+def _normalize_patent_id(patent_id: str) -> str:
+    if not patent_id:
+        return ""
+    return "".join(c for c in patent_id if c.isalnum()).upper()
+
+
 class CacheDatabase:
     def __init__(self, db_path: str = "recon_cache.db"):
         self.db_path = str(db_path)
@@ -304,16 +310,18 @@ class CacheDatabase:
         tags: Optional[list[str]] = None,
         score_at_save: Optional[int] = None,
     ) -> None:
-        _source = source_api or _infer_source(record.id)
+        norm_id = _normalize_patent_id(record.id)
+        record_copy = dataclasses.replace(record, id=norm_id)
+        _source = source_api or _infer_source(norm_id)
         _tags = json.dumps(tags or [])
-        data = json.dumps(dataclasses.asdict(record))
+        data = json.dumps(dataclasses.asdict(record_copy))
         with contextlib.closing(self.get_connection()) as conn:
             with conn:
                 conn.execute(
                     """INSERT INTO collections
                        (patent_id, patent_json, source_api, collection_name, notes, tags, score_at_save)
                        VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (record.id, data, _source, collection_name, notes, _tags, score_at_save),
+                    (norm_id, data, _source, collection_name, notes, _tags, score_at_save),
                 )
 
     def get_collection(self, collection_name: str = "default") -> list[PatentRecord]:
@@ -363,6 +371,7 @@ class CacheDatabase:
     # ── citations ────────────────────────────────────────────────────────────
 
     def get_citations(self, patent_id: str) -> Optional[dict]:
+        patent_id = _normalize_patent_id(patent_id)
         with contextlib.closing(self.get_connection()) as conn:
             row = conn.execute(
                 "SELECT * FROM citations WHERE patent_id = ?",
@@ -379,6 +388,7 @@ class CacheDatabase:
         family_id: Optional[str] = None,
         data_source: str = "web",
     ) -> None:
+        patent_id = _normalize_patent_id(patent_id)
         _cited_by = json.dumps(cited_by or [])
         _cites = json.dumps(cites or [])
         _family = json.dumps(family_members or [])
@@ -575,6 +585,7 @@ class CacheDatabase:
     # ── enrichment_cache (legacy) ────────────────────────────────────────────
 
     def get_enrichment_cache(self, patent_id: str) -> Optional[list[CrossReference]]:
+        patent_id = _normalize_patent_id(patent_id)
         with contextlib.closing(self.get_connection()) as conn:
             row = conn.execute(
                 "SELECT cross_refs_json FROM enrichment_cache WHERE patent_id = ? AND enriched_at > datetime('now', '-7 days')",
@@ -588,6 +599,7 @@ class CacheDatabase:
         return [CrossReference(**cr) for cr in data_list]
 
     def save_enrichment_cache(self, patent_id: str, refs: list[CrossReference]) -> None:
+        patent_id = _normalize_patent_id(patent_id)
         data = json.dumps([dataclasses.asdict(r) for r in refs])
         with contextlib.closing(self.get_connection()) as conn:
             with conn:
@@ -599,6 +611,7 @@ class CacheDatabase:
     # ── embeddings ───────────────────────────────────────────────────────────
 
     def save_embedding(self, patent_id: str, embedding: list[float]) -> None:
+        patent_id = _normalize_patent_id(patent_id)
         with contextlib.closing(self.get_connection()) as conn:
             with conn:
                 conn.execute(
@@ -608,6 +621,7 @@ class CacheDatabase:
                 )
 
     def get_embedding(self, patent_id: str) -> list[float] | None:
+        patent_id = _normalize_patent_id(patent_id)
         with contextlib.closing(self.get_connection()) as conn:
             row = conn.execute(
                 "SELECT embedding_json FROM embeddings WHERE patent_id = ?",
@@ -673,6 +687,6 @@ class CacheDatabase:
 
 
 def _infer_source(patent_id: str) -> str:
-    prefix = patent_id[:2].upper()
+    prefix = _normalize_patent_id(patent_id)[:2].upper()
     mapping = {"US": "uspto", "EP": "epo", "WO": "wipo", "JP": "jpo", "CN": "cnipa"}
     return mapping.get(prefix, "web")
