@@ -79,7 +79,7 @@ class InfoTab(Static):
             content = (
                 f"{title}\n"
                 f"{'─' * 48}\n"
-                f"{assignee}  {status}\n"
+                f"Assignee: {assignee}  │  Status: {status}\n"
                 f"Filed: {date_f}   Expires: {date_exp}   Family: {family}\n"
                 f"\n"
                 f"Score: {score_bar}\n"

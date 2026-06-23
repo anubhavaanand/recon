@@ -36,7 +36,7 @@ class JSONFormatter(logging.Formatter):
 
 
 def setup_logging(debug: bool = False) -> logging.Logger:
-    log_dir = os.path.expanduser("~/.cache/recon")
+    log_dir = os.path.expanduser("~/.local/share/recon/logs")
     os.makedirs(log_dir, exist_ok=True)
     log_path = os.path.join(log_dir, "recon.debug.log" if debug else "recon.log")
     max_bytes = 50 * 1024 * 1024 if debug else 10 * 1024 * 1024

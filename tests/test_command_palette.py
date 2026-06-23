@@ -7,7 +7,7 @@ def test_filter_all_commands_on_slash():
     """filter("/") returns all 11 commands."""
     palette = CommandPalette()
     palette.filter("/")
-    assert len(palette._filtered) == 11
+    assert len(palette._filtered) == 12
     assert palette._filtered == SLASH_COMMANDS
 
 
@@ -54,7 +54,7 @@ def test_escape_dismisses():
 
     palette.is_active = True
     assert palette.is_active is True
-    assert len(palette._filtered) == 11  # reset on activation
+    assert len(palette._filtered) == 12  # reset on activation
 
     palette.is_active = False
     assert palette.is_active is False

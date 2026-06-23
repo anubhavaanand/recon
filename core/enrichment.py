@@ -47,26 +47,31 @@ def _extract_date(text: str) -> Optional[str]:
 
 
 async def _search_signal(source: str, domain_query: str, search_term: str) -> Optional[CrossReference]:
-    """Run a DDGS search for a single signal category. Runs in thread pool."""
+    """Run a DDGS search for a single signal category via rate-limited scraper."""
     try:
-        def _do_search() -> Optional[CrossReference]:
-            with DDGS() as ddgs:
-                results = list(ddgs.text(f'{domain_query} "{search_term}"', max_results=1))
-                if results:
-                    r = results[0]
-                    snippet = r.get("body", "")
-                    return CrossReference(
-                        source=source,
-                        url=r.get("href", ""),
-                        date=_extract_date(snippet),
-                        metadata={
-                            "title": r.get("title", ""),
-                            "snippet": snippet,
-                        },
-                    )
-            return None
-
-        return await asyncio.to_thread(_do_search)
+        from clients.scrapers import _ddg_search
+        import urllib.parse
+        results = await _ddg_search(f'{domain_query} "{search_term}"', max_results=1)
+        if results:
+            r = results[0]
+            snippet = r.get("body", "")
+            href = r.get("href", "")
+            if "duckduckgo.com/l/" in href and "uddg=" in href:
+                parsed = urllib.parse.urlparse(href)
+                qs = urllib.parse.parse_qs(parsed.query)
+                if "uddg" in qs:
+                    href = qs["uddg"][0]
+                    
+            return CrossReference(
+                source=source,
+                url=href,
+                date=_extract_date(snippet),
+                metadata={
+                    "title": r.get("title", ""),
+                    "snippet": snippet,
+                },
+            )
+        return None
     except Exception:
         return None
 

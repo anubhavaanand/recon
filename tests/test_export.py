@@ -28,7 +28,7 @@ def test_export_bibtex(sample_records, tmp_path):
     output_file = tmp_path / "test.bib"
     export_records(sample_records, "bibtex", str(output_file))
     content = output_file.read_text()
-    assert "@misc{US1" in content
+    assert "@patent{US1" in content
     assert "author = {Acme Corp}" in content
 
 def test_export_markdown(sample_records, tmp_path):

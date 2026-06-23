@@ -65,7 +65,13 @@ class BaseScraper:
     class's methods or inherit from it.
     """
 
-    _ddg_semaphore = asyncio.Semaphore(2)
+    _ddg_semaphore = None
+
+    @classmethod
+    def get_ddg_semaphore(cls) -> asyncio.Semaphore:
+        if cls._ddg_semaphore is None:
+            cls._ddg_semaphore = asyncio.Semaphore(2)
+        return cls._ddg_semaphore
 
     def __init__(self, source_name: str = "generic"):
         self.source_name = source_name
@@ -89,7 +95,7 @@ class BaseScraper:
         }
 
         if is_ddg:
-            async with self._ddg_semaphore:
+            async with self.get_ddg_semaphore():
                 response = await client.get(url, headers=headers, follow_redirects=True)
         else:
             response = await client.get(url, headers=headers, follow_redirects=True)

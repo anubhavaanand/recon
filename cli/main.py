@@ -12,6 +12,15 @@ from rich.table import Table
 app = typer.Typer()
 config_app = typer.Typer()
 
+
+def _get_source_from_id(patent_id: str) -> str:
+    """Infer source prefix from patent ID."""
+    if not patent_id:
+        return "UNKNOWN"
+    prefix = patent_id[:2].upper()
+    mapping = {"US": "USPTO", "EP": "EPO", "WO": "WIPO", "JP": "JPO", "CN": "CNIPA"}
+    return mapping.get(prefix, "OTHER")
+
 @app.callback(invoke_without_command=True)
 def default_behavior(ctx: typer.Context):
     """RECON - Terminal-native patent research tool."""
@@ -30,69 +39,116 @@ console = Console()
 def search(
     query: Optional[str] = typer.Argument(None, help="Patent search query (optional - launches TUI if omitted)"),
     source: Optional[str] = typer.Option(None, "--source", "-s", help=f"Comma-separated source filter. Valid: {','.join(ALL_SOURCES)}. Default: all."),
+    file: Optional[str] = typer.Option(None, "--file", "-f", help="File containing queries (one per line) for batch search."),
+    format: Optional[str] = typer.Option(None, "--format", help="Output format: json or csv (prints to stdout)."),
 ):
     """
     Search for patents.
     
     Without a query: launches interactive TUI.
     With a query: performs CLI search and displays results.
+    Use --file for batch searches from a file.
+    Use --format to pipe results as JSON/CSV to stdout.
     """
-    if query is None:
-        # Launch interactive TUI mode
-        print("DEBUG: Launching ReconApp TUI...")
+    if query is None and file is None:
         ui = ReconApp()
         ui.run()
         return
 
-    query = query.strip()
-    if not query:
-        console.print("[red]ERR: Empty search query. Provide a non-empty query string.[/red]")
-        raise typer.Exit(code=1)
+    # Batch search from file
+    if file is not None:
+        try:
+            with open(file, "r") as fh:
+                queries = [line.strip() for line in fh if line.strip()]
+        except FileNotFoundError:
+            console.print(f"[red]ERR: File not found: {file}[/red]")
+            raise typer.Exit(code=1)
+        except Exception as e:
+            console.print(f"[red]ERR: Cannot read file: {e}[/red]")
+            raise typer.Exit(code=1)
 
-    sources = None
-    if source:
-        sources = [s.strip() for s in source.split(",")]
+        all_results: list = []
+        for q in queries:
+            console.print(f"[cyan]Searching: {q}[/cyan]")
+            try:
+                batch = asyncio.run(search_all(q, sources=sources))
+                all_results.extend(batch)
+            except Exception as e:
+                console.print(f"[red]ERR: Batch search failed for '{q}': {e}[/red]")
 
-    try:
-        console.print(f"[cyan]Searching for: {query}[/cyan]")
-        results = asyncio.run(search_all(query, sources=sources))
-        
-        if not results:
-            console.print("[yellow]No results found.[/yellow]")
+        if not all_results:
+            console.print("[yellow]No results found from batch.[/yellow]")
             raise typer.Exit(code=0)
-        
-        # Display results in a table
-        table = Table(title=f"Search Results ({len(results)} patents)")
-        table.add_column("ID", style="cyan", no_wrap=True)
-        table.add_column("Title", style="green")
-        table.add_column("Filed", style="magenta")
-        table.add_column("Assignee", style="yellow")
-        
-        for record in results[:50]:  # Limit to 50 results for display
-            filed_date = record.dates.get("filed", "[?]") if record.dates else "[?]"
-            table.add_row(
-                record.id or "[?]",
-                (record.title or "[?]")[:55],
-                filed_date,
-                (record.assignee or "[?]")[:35]
-            )
-        
-        console.print(table)
-        console.print(f"\n[green]✓ Displayed {min(50, len(results))} of {len(results)} results[/green]")
-        
-        # Cache search results and add to collection for export
-        if len(results) > 0:
-            db = CacheDatabase()
-            db.save_search_results(query, results)
-            # Add all results to collection so they can be exported
-            for record in results:
-                db.save_to_collection(record)
-            console.print(f"[blue]ℹ {len(results)} results cached and added to collection. Use 'recon export --format json' to export.[/blue]")
-            
-    except Exception as e:
-        console.print(f"[red]ERR: Search operation terminated. Reason: {str(e)}[/red]")
-        console.print("[yellow]Action: Verify API connectivity and check 'recon config show' for valid keys.[/yellow]")
-        raise typer.Exit(code=1)
+
+        results = all_results
+    else:
+        query = query.strip()
+        if not query:
+            console.print("[red]ERR: Empty search query. Provide a non-empty query string.[/red]")
+            raise typer.Exit(code=1)
+
+        sources_list = None
+        if source:
+            sources_list = [s.strip() for s in source.split(",")]
+
+        console.print(f"[cyan]Searching for: {query}[/cyan]")
+        results = asyncio.run(search_all(query, sources=sources_list))
+
+    if not results:
+        console.print("[yellow]No results found.[/yellow]")
+        raise typer.Exit(code=0)
+
+    # --format flag: pipe to stdout as JSON or CSV
+    if format is not None:
+        import json as jsonlib
+        fmt = format.lower()
+        if fmt == "json":
+            out = jsonlib.dumps([r.__dict__ if hasattr(r, "__dict__") else str(r) for r in results], indent=2)
+            console.print(out)
+        elif fmt == "csv":
+            import csv, io
+            buf = io.StringIO()
+            writer = csv.writer(buf)
+            writer.writerow(["id", "title", "assignee", "filed_date", "source"])
+            for r in results:
+                writer.writerow([
+                    getattr(r, "id", "[?]"),
+                    getattr(r, "title", "[?]"),
+                    getattr(r, "assignee", "[?]"),
+                    r.dates.get("filed", "[?]") if getattr(r, "dates", None) else "[?]",
+                    _get_source_from_id(getattr(r, "id", "")),
+                ])
+            console.print(buf.getvalue())
+        else:
+            console.print(f"[red]ERR: Unknown format '{format}'. Use json or csv.[/red]")
+            raise typer.Exit(code=1)
+        return
+
+    # Display results in a table
+    table = Table(title=f"Search Results ({len(results)} patents)")
+    table.add_column("ID", style="cyan", no_wrap=True)
+    table.add_column("Title", style="green")
+    table.add_column("Filed", style="magenta")
+    table.add_column("Source", style="yellow")
+
+    for record in results[:50]:
+        filed_date = record.dates.get("filed", "[?]") if record.dates else "[?]"
+        source_name = _get_source_from_id(record.id or "")
+        table.add_row(
+            record.id or "[?]",
+            (record.title or "[?]")[:55],
+            filed_date,
+            source_name,
+        )
+
+    console.print(table)
+    console.print(f"\n[green]✓ Displayed {min(50, len(results))} of {len(results)} results[/green]")
+
+    db = CacheDatabase()
+    db.save_search_results(query if file is None else file, results)
+    for record in results:
+        db.save_to_collection(record)
+    console.print(f"[blue]ℹ {len(results)} results cached and added to collection. Use 'recon export --format json' to export.[/blue]")
 
 
 @app.command()
@@ -144,10 +200,15 @@ def run(
             table.add_column("ID", style="cyan", no_wrap=True)
             table.add_column("Title", style="green")
             table.add_column("Filed", style="magenta")
-            table.add_column("Assignee", style="yellow")
+            table.add_column("Source", style="yellow")
             for record in results[:50]:
                 filed_date = record.dates.get("filed", "[?]") if getattr(record, "dates", None) else "[?]"
-                table.add_row(record.id or "[?]", (record.title or "[?]")[:55], filed_date, (record.assignee or "[?]")[:35])
+                table.add_row(
+                    record.id or "[?]",
+                    (record.title or "[?]")[:55],
+                    filed_date,
+                    _get_source_from_id(record.id or ""),
+                )
             console.print(table)
 
         if export_format:
@@ -164,7 +225,10 @@ def run(
         raise typer.Exit(code=1)
 
 @app.command()
-def export(format: str = typer.Option(..., "--format", "-f", help="Export format: csv, json, bibtex, markdown, pdf")):
+def export(
+    format: str = typer.Option(..., "--format", "-f", help="Export format: csv, json, bibtex, markdown, pdf"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Custom output file path."),
+):
     """Export the local patent collection."""
     db = CacheDatabase()
     records = db.get_collection()
@@ -172,8 +236,8 @@ def export(format: str = typer.Option(..., "--format", "-f", help="Export format
     if not records:
         typer.echo("ERR: Collection is empty. No records to export.")
         raise typer.Exit(code=1)
-        
-    output_path = f"collection_export.{format.lower()}"
+
+    output_path = output if output else f"collection_export.{format.lower()}"
     try:
         export_records(records, format, output_path)
         typer.echo(f"Successfully exported {len(records)} records to {output_path}")
@@ -342,7 +406,7 @@ def collection_list():
     table.add_column("#", style="dim")
     table.add_column("ID", style="cyan", no_wrap=True)
     table.add_column("Title", style="green")
-    table.add_column("Assignee", style="yellow")
+    table.add_column("Source", style="yellow")
     table.add_column("Filed", style="magenta")
 
     for i, r in enumerate(records, 1):
@@ -350,7 +414,7 @@ def collection_list():
             str(i),
             r.id or "[?]",
             (r.title or "[?]")[:55],
-            (r.assignee or "[?]")[:35],
+            _get_source_from_id(r.id or ""),
             r.dates.get("filed", "[?]"),
         )
     console.print(table)

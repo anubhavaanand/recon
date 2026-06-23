@@ -81,7 +81,10 @@ async def _fetch_backward_citations(patent_id: str) -> List[CitationNode]:
     except Exception:
         return []
 
-    soup = BeautifulSoup(resp.text, "lxml")
+    def _parse_soup(h: str) -> BeautifulSoup:
+        return BeautifulSoup(h, "lxml")
+        
+    soup = await asyncio.to_thread(_parse_soup, resp.text)
     tables = soup.find_all("table")
     nodes: List[CitationNode] = []
     seen_ids: set[str] = set()
@@ -162,7 +165,7 @@ async def _fetch_forward_citations(patent_id: str) -> List[CitationNode]:
             async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
                 resp = await client.get(href, headers={"User-Agent": "Mozilla/5.0"})
                 if resp.status_code == 200:
-                    page_soup = BeautifulSoup(resp.text, "lxml")
+                    page_soup = await asyncio.to_thread(_parse_soup, resp.text)
                     title_el = page_soup.find("title")
                     title = title_el.get_text(strip=True) if title_el else "[?]"
                     title = re.sub(r"\s*-\s*Google Patents$", "", title)

@@ -36,7 +36,7 @@ async def test_epo_search_no_keys_falls_to_scraper_to_mock(monkeypatch):
     client = EPOClient()
     results = await client.search("quantum computing")
     assert len(results) > 0
-    assert "EP-MOCK" in results[0].id
+    assert "EPMOCK" in results[0].id
 
 
 @pytest.mark.asyncio
@@ -109,7 +109,7 @@ async def test_epo_search_api_failure_falls_to_scraper(monkeypatch):
     client = EPOClient()
     results = await client.search("quantum computing")
     assert len(results) > 0
-    assert "EP-MOCK" in results[0].id
+    assert "EPMOCK" in results[0].id
 
 
 @pytest.mark.asyncio

@@ -254,12 +254,11 @@ async def test_enrich_patent_uses_cache(tmp_path, basic_record, mock_ddgs_result
 # ═══════════════════════════════════════════════════════════════
 
 @pytest.mark.asyncio
-async def test_search_all_enriches_top_5():
-    """Mock clients to return 10 records; verify enrich_patent called for first 5 only."""
+async def test_search_all_does_not_enrich_synchronously():
+    """Mock enrich_patent to ensure search_all no longer synchronously enriches records to prevent UI hangs."""
     from core.search import search_all
     from core.models import PatentRecord
 
-    # Create 10 records with consecutive IDs
     records = [
         PatentRecord(
             id=f"US{i:04d}", title=f"Patent {i}", assignee="Test Corp",
@@ -282,11 +281,10 @@ async def test_search_all_enriches_top_5():
         mock_cache_cls.return_value = mock_cache
         mock_cache.get_cached_search.return_value = None
 
-        # Distribute the 10 records across the first 4 clients
-        mock_u.return_value = records[:3]
-        mock_e.return_value = records[3:6]
-        mock_w.return_value = records[6:8]
-        mock_l.return_value = records[8:10]
+        mock_u.return_value = records[:5]
+        mock_e.return_value = records[5:8]
+        mock_w.return_value = records[8:]
+        mock_l.return_value = []
         mock_g.return_value = []
         mock_p.return_value = []
 
@@ -303,8 +301,8 @@ async def test_search_all_enriches_top_5():
 
 
 @pytest.mark.asyncio
-async def test_search_all_enrichment_exception_doesnt_block():
-    """Mock enrich_patent to raise Exception; verify search_all still returns all results."""
+async def test_search_all_lazy_enrichment_doesnt_crash():
+    """Mock enrich_patent to raise Exception; verify search_all still returns all results (enrichment shouldn't even trigger)."""
     from core.search import search_all
     from core.models import PatentRecord
 
@@ -345,7 +343,7 @@ async def test_search_all_enrichment_exception_doesnt_block():
 
             # All 5 records should still be returned despite enrichment failure
             assert len(result) == 5
-            assert mock_enrich.call_count == 5
+            assert mock_enrich.call_count == 0
 
 
 # ═══════════════════════════════════════════════════════════════

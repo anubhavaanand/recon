@@ -41,10 +41,16 @@ async def _ddg_search(query: str, max_results: int = 5) -> list:
     """Search DuckDuckGo via ddgs library, capped at 2 concurrent workers."""
     _ddg_breaker.check()
     await asyncio.sleep(random.uniform(1.0, 3.0))
-    async with BaseScraper._ddg_semaphore:
+    async with BaseScraper.get_ddg_semaphore():
         from ddgs import DDGS
-        with DDGS() as ddgs:
-            return list(ddgs.text(query, max_results=max_results))
+        def _sync_search():
+            with DDGS() as ddgs:
+                return list(ddgs.text(query, max_results=max_results))
+        try:
+            return await asyncio.wait_for(asyncio.to_thread(_sync_search), timeout=8.0)
+        except asyncio.TimeoutError:
+            _ddg_breaker.record_failure()
+            return []
 
 
 async def _fetch_html(
@@ -69,7 +75,7 @@ def _parse_google_patent_html(html: str) -> dict | None:
     soup = BeautifulSoup(html, "lxml")
 
     pn_el = soup.select_one("[itemprop='publicationNumber'], [data-patent-number]")
-    pn = pn_el.get_text(strip=True) if pn_el else None
+    pn = pn_el.get_text(separator=" ", strip=True) if pn_el else None
 
     if not pn:
         title_tag = soup.find("title")
@@ -79,26 +85,26 @@ def _parse_google_patent_html(html: str) -> dict | None:
                 pn = m.group(1)
 
     title_el = soup.select_one("[itemprop='title'], h1, .patent-title")
-    title = title_el.get_text(strip=True) if title_el else "[?]"
+    title = title_el.get_text(separator=" ", strip=True) if title_el else "[?]"
 
     assignee_el = soup.select_one("[itemprop='assignee'], .assignee, .patent-assignee")
-    assignee = assignee_el.get_text(strip=True) if assignee_el else "[?]"
+    assignee = assignee_el.get_text(separator=" ", strip=True) if assignee_el else "[?]"
 
     abstract_el = soup.select_one("[itemprop='abstract'], .abstract, .patent-abstract")
-    abstract = abstract_el.get_text(strip=True) if abstract_el else "[?]"
+    abstract = abstract_el.get_text(separator=" ", strip=True) if abstract_el else "[?]"
 
     date_el = soup.select_one("[itemprop='filingDate'], [itemprop='datePublished'], .filing-date, .pub-date")
-    filed = date_el.get("content") or date_el.get_text(strip=True) if date_el else "[?]"
+    filed = date_el.get("content") or date_el.get_text(separator=" ", strip=True) if date_el else "[?]"
     if filed and filed != "[?]":
         filed = filed[:10]
 
     status_el = soup.select_one("[itemprop='status'], .status, .legal-status")
-    status = status_el.get_text(strip=True) if status_el else "UNKNOWN"
+    status = status_el.get_text(separator=" ", strip=True) if status_el else "UNKNOWN"
 
     claims: list[str] = []
     claim_els = soup.select("[itemprop='claims'], .patent-claims")
     for ce in claim_els:
-        text = ce.get_text(strip=True)
+        text = ce.get_text(separator=" ", strip=True)
         if text:
             claims.append(text)
         if len(claims) >= 10:
@@ -109,7 +115,7 @@ def _parse_google_patent_html(html: str) -> dict | None:
     image_urls: list[str] = []
     img_uri_el = soup.select_one("[itemprop='representativePublicationFigureUri']")
     if img_uri_el:
-        src = img_uri_el.get("src") or img_uri_el.get("href") or img_uri_el.get_text(strip=True)
+        src = img_uri_el.get("src") or img_uri_el.get("href") or img_uri_el.get_text(separator=" ", strip=True)
         if src:
             image_urls.append(src)
     if not image_urls:
@@ -135,7 +141,7 @@ def _parse_wipo_patent_html(html: str) -> dict | None:
     soup = BeautifulSoup(html, "lxml")
 
     pn_el = soup.select_one(".patent-number, .publication-number, [id*='pubNumber']")
-    pn = pn_el.get_text(strip=True) if pn_el else None
+    pn = pn_el.get_text(separator=" ", strip=True) if pn_el else None
 
     if not pn:
         m = re.search(r"(WO\d{4}\d+)", html)
@@ -143,13 +149,13 @@ def _parse_wipo_patent_html(html: str) -> dict | None:
             pn = m.group(1)
 
     title_el = soup.select_one(".title, .invention-title, h1")
-    title = title_el.get_text(strip=True) if title_el else "[?]"
+    title = title_el.get_text(separator=" ", strip=True) if title_el else "[?]"
 
     assignee_el = soup.select_one(".applicant, .assignee, [id*='applicant']")
-    assignee = assignee_el.get_text(strip=True) if assignee_el else "[?]"
+    assignee = assignee_el.get_text(separator=" ", strip=True) if assignee_el else "[?]"
 
     abstract_el = soup.select_one(".abstract, [id*='abstract']")
-    abstract = abstract_el.get_text(strip=True) if abstract_el else "[?]"
+    abstract = abstract_el.get_text(separator=" ", strip=True) if abstract_el else "[?]"
 
     # Parse publication and filing dates from meta tags or structured elements
     filed = "[?]"
@@ -159,7 +165,7 @@ def _parse_wipo_patent_html(html: str) -> dict | None:
         ".publication-date, .filing-date, .date"
     )
     if pub_date_el:
-        d = pub_date_el.get("content") or pub_date_el.get_text(strip=True)
+        d = pub_date_el.get("content") or pub_date_el.get_text(separator=" ", strip=True)
         if d:
             d = d[:10]
             if re.match(r"\d{4}-\d{2}-\d{2}", d):
@@ -168,7 +174,7 @@ def _parse_wipo_patent_html(html: str) -> dict | None:
     if filed == "[?]":
         # Fallback: look for any date-like text in the page
         for tag in soup.find_all(["span", "td", "div"]):
-            text = tag.get_text(strip=True)
+            text = tag.get_text(separator=" ", strip=True)
             m = re.search(r"(\d{4}-\d{2}-\d{2})", text)
             if m:
                 filed = m.group(1)
@@ -195,7 +201,7 @@ async def _fetch_patents_from_urls(
         html = await _fetch_html(url, timeout=timeout, breaker=breaker)
         if not html:
             return None
-        parsed = parser_fn(html)
+        parsed = await asyncio.to_thread(parser_fn, html)
         if not parsed:
             return None
 
@@ -399,13 +405,15 @@ async def search_lens_patents(query: str) -> List[PatentRecord]:
         if not pid or pid in seen_ids:
             continue
 
-        # Try to replace Lens internal ID with actual patent number
+        # Patent number pattern: e.g. US12345678B2, EP1234567, WO2020123456
+        _PATENT_NUM_RE = re.compile(r"[A-Z]{2}\s*\d{4,}\s*[A-Z0-9]{0,3}")
+
         actual_pn = None
         for text in [title_raw, snippet]:
             if text:
                 m2 = _PATENT_NUM_RE.search(text)
                 if m2:
-                    actual_pn = m2.group(0)
+                    actual_pn = re.sub(r'\s+', '', m2.group(0))
                     break
         final_id = actual_pn if actual_pn else pid
         seen_ids.add(final_id)
@@ -517,12 +525,16 @@ async def search_epo_patents(query: str) -> List[PatentRecord]:
                 html = await _fetch_html(ep_url, timeout=8.0)
                 if not html:
                     continue
-                soup = BeautifulSoup(html, "lxml")
+                
+                def _parse_epo_detail(h: str) -> BeautifulSoup:
+                    return BeautifulSoup(h, "lxml")
+                    
+                soup = await asyncio.to_thread(_parse_epo_detail, html)
 
                 # Title
                 title_el = soup.select_one("h1, .page-title")
                 if title_el:
-                    t = title_el.get_text(strip=True)
+                    t = title_el.get_text(separator=" ", strip=True)
                     if t:
                         rec.title = t
 
@@ -530,20 +542,20 @@ async def search_epo_patents(query: str) -> List[PatentRecord]:
                 applicant_el = soup.select_one(".applicant, [id*='applicant']")
                 if not applicant_el:
                     for td in soup.find_all("td"):
-                        if "applicant" in td.get_text(strip=True).lower():
+                        if "applicant" in td.get_text(separator=" ", strip=True).lower():
                             sibling = td.find_next("td")
                             if sibling:
                                 applicant_el = sibling
                             break
                 if applicant_el:
-                    a = applicant_el.get_text(strip=True)
+                    a = applicant_el.get_text(separator=" ", strip=True)
                     if a:
                         rec.assignee = a
 
                 # Abstract
                 abstract_el = soup.select_one(".abstract, [id*='abstract'], .patent-abstract")
                 if abstract_el:
-                    ab = abstract_el.get_text(strip=True)
+                    ab = abstract_el.get_text(separator=" ", strip=True)
                     if ab:
                         rec.abstract = ab
 

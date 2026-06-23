@@ -1,3 +1,4 @@
+import dataclasses
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict
 
@@ -10,6 +11,16 @@ class CrossReference:
     # Weight per signal. Default 1.0 meaning one equal signal.
     # Scoring code multiplies this by 20 to produce the final contribution.
     weight: float = 1.0
+
+    def __repr__(self) -> str:
+        return f"CrossReference(source={self.source}, url={self.url})"
+
+    def to_dict(self) -> dict:
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "CrossReference":
+        return cls(**data)
 
 @dataclass
 class PatentRecord:
@@ -26,6 +37,8 @@ class PatentRecord:
 
     def __post_init__(self):
         self.id = self.id if self.id else "UNKNOWN"
+        import re
+        self.id = re.sub(r'[\s_\-]', '', self.id).upper()
         self.title = self.title if self.title else "[?]"
         self.assignee = self.assignee if self.assignee else "[?]"
         self.abstract = self.abstract if self.abstract else "[?]"
@@ -36,8 +49,22 @@ class PatentRecord:
         for k, v in self.dates.items():
             if not v:
                 self.dates[k] = "[?]"
-        # Ensure claims and image_urls are flagged when empty per constitution
         if not self.claims:
             self.claims = ["[?]"]
         if not self.image_urls:
             self.image_urls = ["[?]"]
+
+    def __repr__(self) -> str:
+        return f"PatentRecord(id={self.id}, title={self.title}, assignee={self.assignee})"
+
+    def to_dict(self) -> dict:
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "PatentRecord":
+        if "cross_references" in data:
+            data["cross_references"] = [
+                CrossReference(**cr) if not isinstance(cr, CrossReference) else cr
+                for cr in data["cross_references"]
+            ]
+        return cls(**data)

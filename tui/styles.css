@@ -126,7 +126,7 @@ ResultListItem.--highlight {
     height: auto;
     background: $surface;
     color: $text;
-    border: solid $border;
+    border: round $border;
     offset: 34 2;
     padding: 0 1;
     layer: overlay;
@@ -141,7 +141,7 @@ ResultListItem.--highlight {
     height: auto;
     background: $surface;
     color: $text;
-    border: solid $border;
+    border: round $border;
     offset: 38 5;
     padding: 0 1;
     layer: overlay;
@@ -156,7 +156,7 @@ ResultListItem.--highlight {
     height: auto;
     background: $surface;
     color: $text;
-    border: solid $border;
+    border: round $border;
     offset: 34 2;
     padding: 0 1;
     layer: overlay;
@@ -171,7 +171,7 @@ ResultListItem.--highlight {
     height: auto;
     background: $surface;
     color: $text;
-    border: solid $secondary;
+    border: round $secondary;
     offset: 34 2;
     padding: 0 1;
     layer: overlay;
@@ -200,7 +200,7 @@ ResultListItem.--highlight {
     max-height: 14;
     background: $surface;
     color: $text;
-    border: solid $primary;
+    border: round $primary;
     offset: 0 3;
     layer: overlay;
     padding: 0 1;
@@ -218,7 +218,7 @@ TerminalDetectionScreen {
 #terminal_detection_content {
     width: 60;
     height: auto;
-    border: solid $border;
+    border: round $border;
     background: $surface;
     padding: 1 2;
     color: $text;
@@ -249,6 +249,15 @@ TerminalDetectionScreen {
     padding: 0 2;
     background: $surface;
     color: #565f89;
+}
+
+/* ── Toast Notifications (iOS Glass Design) ── */
+Toast {
+    background: rgba(36, 40, 59, 0.85);
+    color: $primary;
+    border: none;
+    padding: 1 2;
+    text-align: center;
 }
 
 /* Generated Themes */

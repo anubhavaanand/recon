@@ -268,6 +268,16 @@ class CacheDatabase:
                     (qhash, query, data, len(records), json.dumps(sources or [])),
                 )
 
+    def is_cache_valid(self, query: str) -> bool:
+        """Check if a cached search result exists and has not expired."""
+        qhash = _query_hash(query)
+        with contextlib.closing(self.get_connection()) as conn:
+            row = conn.execute(
+                "SELECT 1 FROM search_results WHERE query_hash = ? AND expires_at > CURRENT_TIMESTAMP",
+                (qhash,),
+            ).fetchone()
+        return row is not None
+
     # ── collections ──────────────────────────────────────────────────────────
 
     def save_to_collection(
@@ -315,6 +325,14 @@ class CacheDatabase:
                 (collection_name,),
             ).fetchone()
             return row["cnt"] if row else 0
+
+    def get_all_collections(self) -> list[str]:
+        """Return a list of all distinct collection names."""
+        with contextlib.closing(self.get_connection()) as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT collection_name FROM collections ORDER BY collection_name"
+            ).fetchall()
+        return [r["collection_name"] for r in rows]
 
     def clear_collection(self, collection_name: Optional[str] = None) -> None:
         with contextlib.closing(self.get_connection()) as conn:

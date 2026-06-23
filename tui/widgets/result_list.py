@@ -32,13 +32,21 @@ class ResultListItem(ListItem):
         self.position = position
 
     def compose(self) -> ComposeResult:
+        yield Label(self._generate_label_text(), id="score_label")
+
+    def _generate_label_text(self) -> str:
         from core.scoring import calculate_signal_score
         score = calculate_signal_score(self.record.cross_references)
         age = _age_str(self.record.dates.get("filed", ""))
         bar = _mini_bar(score)
         rec_id = escape(self.record.id[:20].ljust(20))
-        yield Label(f"{self.position:>2}  {rec_id}  {bar} {score:>3}%  {age}")
+        return f"{self.position:>2}  {rec_id}  {bar} {score:>3}%  {age}"
 
+    def refresh_score(self) -> None:
+        try:
+            self.query_one("#score_label", Label).update(self._generate_label_text())
+        except Exception:
+            pass
 
 class ResultList(ListView):
     pass

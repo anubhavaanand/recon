@@ -36,3 +36,6 @@ Modal dialogs hiding context, AI prose without data backing, signal omission, br
 This constitution supersedes all other design practices. Any new feature must be audited against these principles before implementation.
 
 **Version**: 1.0.0 | **Ratified**: 2026-05-12
+
+## Amendment 1 (Scraper Architecture)
+The 8-package dependency limit is explicitly amended to include `beautifulsoup4`, `lxml`, and `ddgs` to support the required Scraper-First architecture pivot.

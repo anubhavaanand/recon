@@ -112,6 +112,8 @@ class EPOClient(BaseAsyncClient):
         self.config = load_config()
         self.access_token: str | None = None
         self.token_expiry: float = 0
+        # EPO Rate limit: 3/sec (24% headroom)
+        self.rate_limit_delay = 1.0 / (3.0 * 0.76)
 
     async def _get_access_token(self) -> str | None:
         """Obtain a Bearer token via OAuth 2.0 Client Credentials grant.
@@ -184,6 +186,9 @@ class EPOClient(BaseAsyncClient):
             "Accept": "application/json",
         }
         cql = f'txt="{query}"'
+        
+        await asyncio.sleep(self.rate_limit_delay)
+        
         response = await self.get_with_backoff(
             "/rest-services/published-data/search/biblio",
             params={"q": cql},

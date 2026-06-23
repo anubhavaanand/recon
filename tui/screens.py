@@ -2,8 +2,9 @@ from textual.screen import Screen
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Input, ListView, Static
-from textual.reactive import reactive
 from textual import work
+from textual.events import Resize
+from textual.reactive import reactive
 
 
 from rich.markup import escape
@@ -243,6 +244,24 @@ class ReaderModeScreen(Screen):
             yield Static(self._build_content(), id="reader_content", classes="reader-content")
             yield Static(self._status_line(), id="reader_status", classes="reader-status")
 
+    async def on_mount(self) -> None:
+        if not self.record.claims or self.record.claims == ["[?]"]:
+            self.query_one("#reader_status", Static).update(self._status_line() + " │ Fetching full text...")
+            from core.search import search_all
+            try:
+                # Use Google Patents scraper to fetch full text specifically for this ID
+                results = await search_all(self.record.id, sources=["google"])
+                if results:
+                    best = results[0]
+                    if best.abstract and best.abstract != "[?]":
+                        self.record.abstract = best.abstract
+                    if best.claims and best.claims != ["[?]"]:
+                        self.record.claims = best.claims
+                    self.query_one("#reader_content", Static).update(self._build_content())
+            except Exception:
+                pass
+            self.query_one("#reader_status", Static).update(self._status_line())
+
     def _status_line(self) -> str:
         total_claims = len(self.record.claims) if self.record and self.record.claims else 0
         return f"Reader Mode │ {total_claims} claims │ (↑↓) scroll  (c)laims  (d)ownload  (s)ave  (Esc) back"
@@ -366,6 +385,7 @@ class DetailScreen(Screen):
         from core.scoring import calculate_signal_score
         from core.arbitrage import calculate_arbitrage_status, render_arbitrage_table
 
+        import textwrap
         score = calculate_signal_score(r.cross_references)
         status_pill = _render_status_pill(r.status)
         score_bar   = _render_score_bar(score)
@@ -373,12 +393,15 @@ class DetailScreen(Screen):
 
         claims_preview = ""
         for i, claim in enumerate((r.claims or [])[:3], 1):
-            claims_preview += f"{i}. {escape(claim[:80].strip())}...\n"
+            claim_text = escape(claim[:80].strip())
+            claims_preview += textwrap.fill(f"{i}. {claim_text}...", width=56, break_long_words=True) + "\n"
         if not claims_preview:
-            claims_preview = "No claims available."
+            claims_preview = "No claims available.\n"
 
         arb_status = calculate_arbitrage_status(r)
         arb_table = render_arbitrage_table(arb_status)
+
+        wrapped_abstract = textwrap.fill(r.abstract, width=56, break_long_words=True)
 
         return (
             f"RECON ── FULL DETAIL ── {escape(r.id)}\n"
@@ -386,7 +409,7 @@ class DetailScreen(Screen):
             f"{'─' * 56}\n\n"
             f"ABSTRACT\n"
             f"{'─' * 56}\n"
-            f"{escape(r.abstract)}\n\n"
+            f"{escape(wrapped_abstract)}\n\n"
             f"CLAIMS\n"
             f"{'─' * 56}\n"
             f"{claims_preview}"
@@ -502,6 +525,7 @@ _HELP_TEXT = """\
 │                                            │
 │  NAVIGATION                                │
 │  ↑↓ j/k   Navigate results                │
+│  g/G      Jump to top/bottom of list       │
 │  Enter     Open detail view                │
 │  h/l ←/→  Switch preview tab              │
 │  1-9       Quick-open result N             │
@@ -516,14 +540,35 @@ _HELP_TEXT = """\
 │  t         Translate                       │
 │  p         Toggle three-pane               │
 │  m         Synthesis mode                  │
+│  a         Assignee portfolio view         │
 │                                            │
 │  SEARCH                                    │
 │  /         Focus search input              │
 │  ?         Toggle this help                │
-│  q / Esc   Back / Quit                     │
+│  q         Dismiss overlay / Quit          │
+│  Esc       Back                            │
 │                                            │
 │  [?] Close  [Esc] Dismiss                  │
 └────────────────────────────────────────────┘"""
+
+_ASSIGNEE_HELP = """\
+┌─ Assignee Portfolio View ───────────────────┐
+│                                              │
+│  Portfolios with active patents in results:  │
+│  (select to filter by assignee)              │
+│                                              │
+│  [a] toggle   [Esc] dismiss   [q] dismiss    │
+└──────────────────────────────────────────────┘"""
+
+
+def _get_source_from_id(patent_id: str) -> str:
+    """Infer source prefix from patent ID."""
+    if not patent_id:
+        return "UNKNOWN"
+    prefix = patent_id[:2].upper()
+    mapping = {"US": "USPTO", "EP": "EPO", "WO": "WIPO", "JP": "JPO", "CN": "CNIPA"}
+    return mapping.get(prefix, "OTHER")
+
 
 _TABS = ["info", "claims", "image"]
 
@@ -560,6 +605,10 @@ class SearchScreen(Screen):
         ("7",          "quick_open('7')",       "Open 7"),
         ("8",          "quick_open('8')",       "Open 8"),
         ("9",          "quick_open('9')",       "Open 9"),
+        ("g",          "jump_to_top",           "Top"),
+        ("G",          "jump_to_bottom",        "Bottom"),
+        ("a",          "toggle_assignee_view",  "Assignee Portfolio"),
+        ("q",          "dismiss_or_quit",       "Quit"),
     ]
 
     _active_tab: reactive[str] = reactive("info")
@@ -576,6 +625,11 @@ class SearchScreen(Screen):
         self._show_source_filter = False
         self._source_filter_selected = 0
         self._active_sources: set[str] = set(ALL_SOURCES)
+        self._search_history: list[dict] = []
+        self._search_history_index = -1
+        self._show_assignee_view = False
+        self._assignee_portfolios: dict[str, list] = {}
+        self._input_error = False
 
     def compose(self) -> ComposeResult:
         # Top status bar
@@ -599,9 +653,11 @@ class SearchScreen(Screen):
         yield Static("", id="export_overlay", classes="hidden")
         # Source filter overlay (hidden by default)
         yield Static("", id="source_filter_overlay", classes="hidden")
+        # Assignee Portfolio View overlay (hidden by default)
+        yield Static("", id="assignee_overlay", classes="hidden")
         # Bottom status bar
         yield Static(
-            "↑↓ nav  Enter:detail  /:commands  s:save  e:export  S:source  r:reader  ?:help  q:quit",
+            "↑↓ nav  g/G:top/bottom  Enter:detail  /:commands  s:save  e:export  a:assignee  ?:help  q:quit",
             id="status_bottom"
         )
 
@@ -610,7 +666,7 @@ class SearchScreen(Screen):
         parts = []
         for key, label in tabs.items():
             if key == self._active_tab:
-                parts.append(f"[{label}]")
+                parts.append(f"<{label}>")
             else:
                 parts.append(f" {label} ")
         return "  ".join(parts) + "  ─────────────────────────────────"
@@ -648,6 +704,18 @@ class SearchScreen(Screen):
                 event.stop()
                 return
 
+        # Handle q to dismiss any active overlay
+        if event.key == "q":
+            if self._dismiss_active_overlay():
+                event.stop()
+                return
+
+        # Handle up arrow on search input for history cycling
+        if event.key == "up" and self.query_one("#search_input", Input).has_focus:
+            self._cycle_search_history(-1)
+            event.stop()
+            return
+
         if self._show_source_filter:
             handled = self._on_key_source_filter(event)
             if handled:
@@ -670,6 +738,15 @@ class SearchScreen(Screen):
 
     def on_input_changed(self, event: Input.Changed) -> None:
         value = event.value
+
+        # Clear error state when query becomes valid
+        if self._input_error and len(value.strip()) >= 3:
+            self.query_one("#search_input", Input).remove_class("input-error")
+            self._input_error = False
+            self.query_one("#status_top", Static).update(
+                "RECON  ─────────────────────────────────────────"
+            )
+
         palette = self.query_one("#command_palette", CommandPalette)
         if value.startswith("/"):
             palette.is_active = True
@@ -681,13 +758,50 @@ class SearchScreen(Screen):
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         query = event.value.strip()
-        if not query:
+
+        if query.startswith("/theme "):
+            theme_name = query[len("/theme "):].strip().lower().replace(" ", "-")
+            for cls in list(self.classes):
+                if cls.startswith("theme-"):
+                    self.remove_class(cls)
+            self.add_class(f"theme-{theme_name}")
+            self.query_one("#status_top").update(f"Theme changed to {theme_name}")
+            search_input = self.query_one("#search_input")
+            search_input.value = ""
+            event.stop()
             return
+
+        # Input validation: minimum 3 characters
+        search_input = self.query_one("#search_input", Input)
+        if len(query) < 3:
+            search_input.add_class("input-error")
+            self._input_error = True
+            self.query_one("#status_top", Static).update(
+                "ERR: Query must be 3+ characters."
+            )
+            event.stop()
+            return
+
+        if self._input_error:
+            search_input.remove_class("input-error")
+            self._input_error = False
+
         self.query_one("#status_top", Static).update(
             f"RECON  ─────────────  Searching: {escape(query)}..."
         )
         sources = list(self._active_sources) if self._active_sources and len(self._active_sources) < len(ALL_SOURCES) else None
+        
+        # Fire off the worker so the UI remains completely responsive
+        self._perform_search(query, sources)
+        self.query_one(ResultList).focus()
+
+    @work(exclusive=True)
+    async def _perform_search(self, query: str, sources: list | None) -> None:
+        """Worker task to perform the search without blocking the UI event handler."""
+        import asyncio
+        await asyncio.sleep(0.01) # Yield to event loop to guarantee the "Searching..." text renders
         self._results = await search_all(query, sources=sources)
+        
         result_list = self.query_one(ResultList)
         result_list.clear()
 
@@ -738,10 +852,18 @@ class SearchScreen(Screen):
         if record.cross_references:
             return
         try:
-            self.notify("⟳ Enriching...")
             await enrich_patent(record)
             self.query_one(InfoTab).update_record(record)
-            self.notify(f"Enrichment: {len(record.cross_references)} signals found")
+            
+            # Refresh the score in the list view
+            result_list = self.query_one(ResultList)
+            for child in result_list.children:
+                if getattr(child, "record", None) is record and hasattr(child, "refresh_score"):
+                    child.refresh_score()
+                    break
+
+            if record.cross_references:
+                self.notify(f"Enrichment: {len(record.cross_references)} signals found", timeout=2.0)
         except Exception:
             pass
 
@@ -893,7 +1015,7 @@ class SearchScreen(Screen):
     def action_export_collection(self) -> None:
         db = CacheDatabase()
         if not db.get_collection():
-            self.notify("Collection is empty. Press 's' to save patents first.")
+            self.notify("ERR: Collection is empty. Save patents with 's' first.", severity="error")
             return
         self._show_export_overlay()
 
@@ -983,6 +1105,130 @@ class SearchScreen(Screen):
             return True
         return False
 
+    # ── Overlay dismissal ─────────────────────────────
+
+    def _dismiss_active_overlay(self) -> bool:
+        """Dismiss any active overlay. Returns True if an overlay was dismissed."""
+        if self._show_export:
+            self._hide_export_overlay()
+            return True
+        if self._show_source_filter:
+            self._hide_source_filter_overlay()
+            return True
+        if self._show_help:
+            self.action_toggle_help()
+            return True
+        if self._show_assignee_view:
+            self.action_toggle_assignee_view()
+            return True
+        return False
+
+    def action_dismiss_or_quit(self) -> None:
+        """Dismiss overlays first, then quit if none active."""
+        if self._dismiss_active_overlay():
+            return
+        self.app.exit()
+
+    # ── Search history cycling ────────────────────────
+
+    def _cycle_search_history(self, direction: int = -1) -> None:
+        """Cycle through search history in the given direction (-1 for up)."""
+        db = CacheDatabase()
+        if not self._search_history:
+            self._search_history = db.get_search_history(limit=50)
+            self._search_history_index = -1
+
+        if not self._search_history:
+            return
+
+        self._search_history_index += direction
+        if self._search_history_index < 0:
+            self._search_history_index = len(self._search_history) - 1
+        elif self._search_history_index >= len(self._search_history):
+            self._search_history_index = 0
+
+        entry = self._search_history[self._search_history_index]
+        inp = self.query_one("#search_input", Input)
+        inp.value = entry.get("query_text", "")
+        inp.cursor_position = len(inp.value)
+
+    # ── Jump to top/bottom ────────────────────────────
+
+    def action_jump_to_top(self) -> None:
+        """Jump to the top of the result list (g key)."""
+        result_list = self.query_one(ResultList)
+        if result_list.children:
+            result_list.index = 0
+
+    def action_jump_to_bottom(self) -> None:
+        """Jump to the bottom of the result list (G key)."""
+        result_list = self.query_one(ResultList)
+        if result_list.children:
+            result_list.index = len(result_list.children) - 1
+
+    # ── Assignee Portfolio View ───────────────────────
+
+    def _build_assignee_view(self) -> str:
+        """Build the assignee portfolio view content."""
+        assignees: dict[str, int] = {}
+        for record in self._results:
+            name = record.assignee or "UNKNOWN"
+            assignees[name] = assignees.get(name, 0) + 1
+
+        sorted_assignees = sorted(assignees.items(), key=lambda x: -x[1])
+
+        lines = [
+            "┌─ Assignee Portfolio View ──────────────────┐",
+            "│                                             │",
+        ]
+        for name, count in sorted_assignees[:15]:
+            escaped_name = escape(name[:28])
+            lines.append(f"│  {escaped_name:<30} {count:>3} patents │")
+        lines += [
+            "│                                             │",
+            "│  [a] toggle   [Esc/q] dismiss              │",
+            "└─────────────────────────────────────────────┘",
+        ]
+        return "\n".join(lines)
+
+    def action_toggle_assignee_view(self) -> None:
+        """Toggle the assignee portfolio view overlay."""
+        overlay = self.query_one("#assignee_overlay", Static)
+        if self._show_assignee_view:
+            overlay.add_class("hidden")
+            self._show_assignee_view = False
+        else:
+            overlay.update(self._build_assignee_view())
+            overlay.remove_class("hidden")
+            self._show_assignee_view = True
+
+    # ── Responsive breakpoints ────────────────────────
+
+    def on_resize(self, event: Resize) -> None:
+        """Adapt layout to terminal width."""
+        width = event.size.width
+        
+        # Ignore transient 0-width resize events during terminal initialization
+        if width == 0:
+            return
+            
+        if width < 40:
+            self.app.exit(
+                return_code=1,
+                message="ERR: Terminal too narrow (40+ cols required)."
+            )
+            return
+
+        result_pane = self.query_one("#result_list")
+        tab_pane = self.query_one("#preview_column")
+
+        if width < 80:
+            result_pane.styles.width = "100%"
+            tab_pane.styles.display = "none"
+        else:
+            result_pane.styles.width = "40%"
+            tab_pane.styles.display = "block"
+
     def action_focus_search(self) -> None:
         self.query_one("#search_input", Input).focus()
 
@@ -1021,6 +1267,7 @@ class SearchScreen(Screen):
             "show_citation_graph": self.action_show_citation_graph,
             "translate": lambda: self.call_after_refresh(self.action_translate()),
             "toggle_source_filter": self.action_toggle_source_filter,
+            "change_theme": lambda: self._insert_slash_command("/theme "),
             "toggle_help": self.action_toggle_help,
             "clear_search": self._clear_search,
             "show_config": self._show_config,
@@ -1037,6 +1284,12 @@ class SearchScreen(Screen):
         self.query_one(ResultList).clear()
         self.query_one("#status_top", Static).update("RECON  ─────────────────────────────────────────")
         self.notify("Search cleared.")
+
+    def _insert_slash_command(self, cmd: str) -> None:
+        input_widget = self.query_one("#search_input", Input)
+        input_widget.value = cmd
+        input_widget.focus()
+        input_widget.cursor_position = len(cmd)
 
     def _show_config(self) -> None:
         self.notify("Config: ~/.config/recon/config.toml  |  Run 'recon config --help'")

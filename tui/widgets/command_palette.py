@@ -20,6 +20,7 @@ SLASH_COMMANDS = [
     ("/cite",      "Show citation graph",     "show_citation_graph"),
     ("/translate", "Toggle translation",      "translate"),
     ("/source",    "Filter sources",          "toggle_source_filter"),
+    ("/theme",     "Change UI theme",         "change_theme"),
     ("/help",      "Show help",               "toggle_help"),
     ("/clear",     "Clear search",            "clear_search"),
     ("/config",    "Show config",             "show_config"),

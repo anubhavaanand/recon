@@ -67,7 +67,7 @@ def _export_json(records: List[PatentRecord], output_path: str):
 def _export_bibtex(records: List[PatentRecord], output_path: str):
     with open(output_path, 'w', encoding='utf-8') as f:
         for record in records:
-            f.write(f"@misc{{{record.id},\n")
+            f.write(f"@patent{{{record.id},\n")
             f.write(f"  title = {{{record.title}}},\n")
             f.write(f"  author = {{{record.assignee}}},\n")
             f.write(f"  year = {{{record.dates.get('filed', '')[:4] if record.dates.get('filed') else ''}}},\n")

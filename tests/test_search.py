@@ -30,10 +30,10 @@ def test_missing_dates_sort_last():
     r_unk = _make_record("unk", "[?]")
     sorted_records = sort_and_merge_results([r_none, r_old, r_unk, r_new])
     assert len(sorted_records) == 4
-    assert sorted_records[0].id == "new"
-    assert sorted_records[1].id == "old"
-    assert sorted_records[2].id in ("none", "unk")
-    assert sorted_records[3].id in ("none", "unk")
+    assert sorted_records[0].id == "NEW"
+    assert sorted_records[1].id == "OLD"
+    assert sorted_records[2].id in ("NONE", "UNK")
+    assert sorted_records[3].id in ("NONE", "UNK")
 
 
 def test_all_results_present_no_silent_omission():

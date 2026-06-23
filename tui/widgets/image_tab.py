@@ -24,7 +24,7 @@ def detect_terminal_protocol() -> TerminalProtocol:
 
     if kitty_window:
         return TerminalProtocol.KITTY
-    if "iterm" in term_program:
+    if "iterm" in term_program or "wezterm" in term_program:
         return TerminalProtocol.ITERM2
     if "mlterm" in term or mlterm_flag:
         return TerminalProtocol.SIXEL
