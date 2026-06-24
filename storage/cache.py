@@ -675,10 +675,10 @@ class CacheDatabase:
                     )
                     stats["deleted_lru"] = cursor.rowcount
 
-            conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
 
-            vacuum_result = self.vacuum()
-            stats["vacuum_freed_mb"] = round(vacuum_result["freed_bytes"] / (1024 * 1024), 2)
+                vacuum_result = self.vacuum()
+                stats["vacuum_freed_mb"] = round(vacuum_result["freed_bytes"] / (1024 * 1024), 2)
 
         return stats
 

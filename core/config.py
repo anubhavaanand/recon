@@ -10,22 +10,32 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 import base64
 
 CONFIG_PATH = Path.home() / ".config" / "recon" / "config.toml"
+_CACHE_DIR = Path.home() / ".cache" / "recon"
+_SALT_PATH = _CACHE_DIR / ".config_salt"
 _ENCRYPTION_PREFIX = "enc:AES256GCM:"
 
 
 class ConfigEncryption:
     """AES-256-GCM encryption for API keys at rest.
 
-    Key derived from machine fingerprint via PBKDF2-HMAC-SHA256.
+    Key derived from machine fingerprint via PBKDF2-HMAC-SHA256 + random salt.
     Uses AES-256-GCM (nonce 12 bytes prepended to ciphertext).
     """
+
+    def _get_salt(self) -> bytes:
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        if _SALT_PATH.exists():
+            return _SALT_PATH.read_bytes()
+        salt = os.urandom(16)
+        _SALT_PATH.write_bytes(salt)
+        return salt
 
     def _derive_key(self) -> bytes:
         fingerprint = f"{os.uname().nodename}:{os.getlogin()}:{platform.machine()}"
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
-            salt=b"recon_v1_fixed_salt",
+            salt=self._get_salt(),
             iterations=100000,
         )
         return kdf.derive(fingerprint.encode())
