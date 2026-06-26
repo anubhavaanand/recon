@@ -3,7 +3,46 @@ TUI layout tests using Textual's async pilot framework.
 PRD §10: TUI tests using Textual's async pilot framework.
 """
 import pytest
+from unittest.mock import patch, AsyncMock
 from textual.widgets import Input, Static
+from core.models import PatentRecord
+
+
+MOCK_RECORDS = [
+    PatentRecord(
+        id="US12345678B2",
+        title="Quantum Computing Device",
+        assignee="Test Corp",
+        dates={"filed": "2023-01-15"},
+        abstract="A quantum computing device with improved qubit stability.",
+        claims=["A quantum computing device comprising: a qubit array."],
+        image_urls=[],
+        status="active",
+        family_id="FAM001",
+    ),
+    PatentRecord(
+        id="US987654321A",
+        title="Quantum Error Correction Method",
+        assignee="Research Labs",
+        dates={"filed": "2022-06-20"},
+        abstract="A method for correcting quantum errors in superconducting circuits.",
+        claims=["A method for quantum error correction."],
+        image_urls=[],
+        status="active",
+        family_id="FAM002",
+    ),
+    PatentRecord(
+        id="US555555555B",
+        title="Quantum Network Protocol",
+        assignee="Network Inc",
+        dates={"filed": "2024-03-10"},
+        abstract="A protocol for secure quantum key distribution over fiber networks.",
+        claims=["A quantum network protocol."],
+        image_urls=[],
+        status="active",
+        family_id="FAM003",
+    ),
+]
 
 
 @pytest.mark.asyncio
@@ -21,19 +60,19 @@ async def test_search_returns_results():
     """Searching 'quantum' populates result list."""
     from tui.app import ReconApp
     from tui.screens import SearchScreen
-    async with ReconApp().run_test(size=(140, 40)) as pilot:
-        await pilot.app.switch_screen(SearchScreen())
-        await pilot.pause(0.5)
-        await pilot.click("#search_input")
-        for ch in "quantum":
-            await pilot.press(ch)
-        await pilot.press("enter")
-        await pilot.pause(3.0)
-        screen = pilot.app.screen
-        result_list = screen.query_one("#result_list")
-        # item_count or len(children) — check results loaded
-        children = list(result_list.children)
-        assert len(children) > 0
+    with patch("tui.screens.search_all", new_callable=AsyncMock, return_value=MOCK_RECORDS):
+        async with ReconApp().run_test(size=(140, 40)) as pilot:
+            await pilot.app.switch_screen(SearchScreen())
+            await pilot.pause(0.5)
+            await pilot.click("#search_input")
+            for ch in "quantum":
+                await pilot.press(ch)
+            await pilot.press("enter")
+            await pilot.pause(3.0)
+            screen = pilot.app.screen
+            result_list = screen.query_one("#result_list")
+            children = list(result_list.children)
+            assert len(children) > 0
 
 
 @pytest.mark.asyncio
@@ -105,28 +144,29 @@ async def test_reader_mode_push():
     """r key pushes ReaderModeScreen when a result is selected."""
     from tui.app import ReconApp
     from tui.screens import ReaderModeScreen, SearchScreen
-    async with ReconApp().run_test(size=(140, 40)) as pilot:
-        await pilot.app.switch_screen(SearchScreen())
-        await pilot.pause(1.5)
-        await pilot.click("#search_input")
-        for ch in "quantum":
-            await pilot.press(ch)
-        await pilot.press("enter")
-        await pilot.pause(4.0)
+    with patch("tui.screens.search_all", new_callable=AsyncMock, return_value=MOCK_RECORDS):
+        async with ReconApp().run_test(size=(140, 40)) as pilot:
+            await pilot.app.switch_screen(SearchScreen())
+            await pilot.pause(1.5)
+            await pilot.click("#search_input")
+            for ch in "quantum":
+                await pilot.press(ch)
+            await pilot.press("enter")
+            await pilot.pause(4.0)
 
-        # Blur input so 'r' bubbles
-        pilot.app.screen.query_one("#search_input").blur()
-        await pilot.pause(1.0)
+            # Blur input so 'r' bubbles
+            pilot.app.screen.query_one("#search_input").blur()
+            await pilot.pause(1.0)
 
-        # Navigate to first result and focus it
-        result_list = pilot.app.screen.query_one("#result_list")
-        result_list.focus()
-        await pilot.press("down")
-        await pilot.pause(1.0)
+            # Navigate to first result and focus it
+            result_list = pilot.app.screen.query_one("#result_list")
+            result_list.focus()
+            await pilot.press("down")
+            await pilot.pause(1.0)
 
-        await pilot.press("r")
-        await pilot.pause(2.5)
-        assert isinstance(pilot.app.screen, ReaderModeScreen)
+            await pilot.press("r")
+            await pilot.pause(2.5)
+            assert isinstance(pilot.app.screen, ReaderModeScreen)
 
 
 @pytest.mark.asyncio
