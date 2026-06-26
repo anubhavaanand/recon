@@ -32,7 +32,11 @@ class ConfigEncryption:
         return salt
 
     def _derive_key(self) -> bytes:
-        fingerprint = f"{os.uname().nodename}:{os.getlogin()}:{platform.machine()}"
+        try:
+            login = os.getlogin()
+        except OSError:
+            login = os.environ.get("USER", "recon")
+        fingerprint = f"{os.uname().nodename}:{login}:{platform.machine()}"
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,

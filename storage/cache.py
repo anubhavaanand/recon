@@ -233,6 +233,7 @@ class CacheDatabase:
         self.enforce_eviction_policy()
 
     def _init_db(self) -> None:
+        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.db_path)
         try:
             conn.execute("PRAGMA journal_mode=WAL;")
