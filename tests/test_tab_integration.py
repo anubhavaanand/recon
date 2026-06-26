@@ -1,7 +1,8 @@
-import pytest
-from unittest.mock import MagicMock, AsyncMock
-from core.models import PatentRecord
+from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
+from core.models import PatentRecord
 
 SAMPLE_RECORD = PatentRecord(
     id="US12345678",
@@ -92,8 +93,8 @@ async def test_tab_content_loads_on_selection():
 async def test_tab_no_blank_content_after_switch():
     from tui.screens import SearchScreen
     from tui.widgets.claims_tab import ClaimsTab
-    from tui.widgets.info_tab import InfoTab
     from tui.widgets.image_tab import ImageTab
+    from tui.widgets.info_tab import InfoTab
     screen = SearchScreen()
     mock_info = MagicMock(spec=InfoTab)
     mock_info.update_record = MagicMock()
@@ -138,9 +139,9 @@ async def test_multiple_tab_switches_work():
 @pytest.mark.asyncio
 async def test_preview_populated_on_record_load():
     from tui.screens import SearchScreen
-    from tui.widgets.info_tab import InfoTab
     from tui.widgets.claims_tab import ClaimsTab
     from tui.widgets.image_tab import ImageTab
+    from tui.widgets.info_tab import InfoTab
     screen = SearchScreen()
     mock_info = MagicMock(spec=InfoTab)
     mock_info.update_record = MagicMock()

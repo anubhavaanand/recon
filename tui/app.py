@@ -1,4 +1,5 @@
-from textual.app import App, ComposeResult
+from textual.app import App
+
 from tui.screens import SearchScreen
 
 
@@ -13,7 +14,7 @@ class ReconApp(App):
         ScrollBarRender.HORIZONTAL_BARS = ["█", "█", "█", "█", "█", "█", "█", " "]
 
         from core.config import load_config
-        from tui.screens import SearchScreen, TerminalDetectionScreen
+        from tui.screens import TerminalDetectionScreen
 
         config = load_config()
         if not config.terminal_detection_seen:

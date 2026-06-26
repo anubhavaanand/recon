@@ -1,6 +1,5 @@
-import os
-import pytest
-from tui.widgets.image_tab import detect_terminal_protocol, TerminalProtocol
+from tui.widgets.image_tab import TerminalProtocol, detect_terminal_protocol
+
 
 def test_detect_kitty(monkeypatch):
     # New implementation detects Kitty via KITTY_WINDOW_ID env var

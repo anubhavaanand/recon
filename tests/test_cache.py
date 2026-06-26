@@ -1,5 +1,5 @@
-from storage.cache import CacheDatabase
 from core.models import PatentRecord
+from storage.cache import CacheDatabase
 
 
 def test_cache_init(tmp_path):

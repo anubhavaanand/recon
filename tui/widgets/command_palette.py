@@ -7,10 +7,9 @@ Uses inline Static with hidden CSS class (no ModalScreen — constitution-compli
 
 from __future__ import annotations
 
+from rapidfuzz import fuzz
 from rich.markup import escape
 from textual.widgets import Static
-from rapidfuzz import fuzz
-
 
 SLASH_COMMANDS = [
     ("/search",    "Search patents",          "focus_search"),

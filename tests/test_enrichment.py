@@ -10,12 +10,12 @@ Covers:
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
 
-from core.models import PatentRecord, CrossReference
+from core.models import CrossReference, PatentRecord
 from storage.cache import CacheDatabase
-
 
 # ═══════════════════════════════════════════════════════════════
 # Fixtures
@@ -304,8 +304,8 @@ async def test_enrich_patent_uses_cache(tmp_path, basic_record, mock_cross_refs)
 @pytest.mark.asyncio
 async def test_search_all_does_not_enrich_synchronously():
     """Mock enrich_patent to ensure search_all no longer synchronously enriches records to prevent UI hangs."""
-    from core.search import search_all
     from core.models import PatentRecord
+    from core.search import search_all
 
     records = [
         PatentRecord(
@@ -349,8 +349,8 @@ async def test_search_all_does_not_enrich_synchronously():
 @pytest.mark.asyncio
 async def test_search_all_lazy_enrichment_doesnt_crash():
     """Mock enrich_patent to raise Exception; verify search_all still returns all results."""
-    from core.search import search_all
     from core.models import PatentRecord
+    from core.search import search_all
 
     records = [
         PatentRecord(

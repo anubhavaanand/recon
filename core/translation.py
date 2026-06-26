@@ -8,12 +8,9 @@ ERR: and returns the original text.
 from __future__ import annotations
 
 import hashlib
-import re
 import sqlite3
-from pathlib import Path
 
 import httpx
-
 
 _CACHE_DB = "recon_cache.db"
 

@@ -1,12 +1,15 @@
-import httpx
 import asyncio
-from typing import List
-from core.models import CrossReference
 import urllib.parse
+from typing import List
+
+import httpx
+
+from core.models import CrossReference
+
 
 class IntelligenceClient:
     """Client for gathering cross-reference intelligence."""
-    
+
     def __init__(self):
         self.timeout = 15.0
 
@@ -26,7 +29,7 @@ class IntelligenceClient:
             },
             "limit": 5
         }
-        
+
         try:
             async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
                 response = await client.post(url, json=payload)
@@ -37,7 +40,7 @@ class IntelligenceClient:
                         proj_num = r.get("project_num", "UNKNOWN")
                         title = r.get("project_title", "")
                         refs.append(CrossReference(
-                            source="NIH", 
+                            source="NIH",
                             url=f"https://reporter.nih.gov/search/search/project-details/{proj_num}",
                             metadata={"confidence": 85.0, "title": title}
                         ))
@@ -59,7 +62,7 @@ class IntelligenceClient:
                     if not results:
                         return []
                     inst_id = results[0].get("id")
-                    
+
                     # fetch works from this institution
                     works_url = f"https://api.openalex.org/works?filter=institutions.id:{inst_id.split('/')[-1]}&per-page=5"
                     works_resp = await client.get(works_url)
@@ -81,18 +84,18 @@ class IntelligenceClient:
     async def fetch_signals(self, entity_name: str) -> List[CrossReference]:
         if not entity_name or entity_name == "[?]":
             return []
-            
+
         tasks = [
             self.fetch_nih_reporter(entity_name),
             self.fetch_openalex(entity_name)
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         signals = []
         for res in results:
             if isinstance(res, list):
                 signals.extend(res)
-                
+
         return signals
 
 async def gather_intelligence(entity_name: str) -> List[CrossReference]:

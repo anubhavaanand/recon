@@ -20,15 +20,14 @@ import logging
 import random
 import re
 from typing import List
+from urllib.parse import urlparse
 
-import httpx
 from bs4 import BeautifulSoup
 
-from clients.base_scraper import BaseScraper, RateLimitedError, SourceDisabledError, _DDG_SEMAPHORE
+from clients.base_scraper import _DDG_SEMAPHORE, BaseScraper
 from clients.circuit_breaker import CircuitBreaker, CircuitOpenError
 from core.models import PatentRecord
 from core.search import sanitize_query
-from urllib.parse import urlparse
 
 logger = logging.getLogger("recon")
 

@@ -1,6 +1,5 @@
-import pytest
-from core.scoring import calculate_signal_score, match_entity
 from core.models import CrossReference
+from core.scoring import calculate_signal_score, match_entity
 
 
 def test_entity_matching():
@@ -70,7 +69,7 @@ def test_scoring_determinism_with_penalties():
 
 
 def test_no_hidden_weights():
-    from core.scoring import _GRANT_SOURCES, _CORP_SOURCES, _ACADEMIC_SOURCES, _SUPPLY_SOURCES
+    from core.scoring import _ACADEMIC_SOURCES, _CORP_SOURCES, _GRANT_SOURCES, _SUPPLY_SOURCES
     total_unique = len(_GRANT_SOURCES | _CORP_SOURCES | _ACADEMIC_SOURCES | _SUPPLY_SOURCES)
     assert total_unique > 0
     for source in _GRANT_SOURCES:

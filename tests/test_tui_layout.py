@@ -3,7 +3,7 @@ TUI layout tests using Textual's async pilot framework.
 PRD §10: TUI tests using Textual's async pilot framework.
 """
 import pytest
-from textual.widgets import Input, Static, ListView
+from textual.widgets import Input, Static
 
 
 @pytest.mark.asyncio
@@ -50,11 +50,11 @@ async def test_tab_switching_hl():
             await pilot.press(ch)
         await pilot.press("enter")
         await pilot.pause(4.0)
-        
+
         # Blur the input so character keys bubble up to the screen bindings
         pilot.app.screen.query_one("#search_input").blur()
         await pilot.pause(3.0)
-        
+
         screen = pilot.app.screen
         screen.refresh()
         assert screen._active_tab == "info"
@@ -75,25 +75,26 @@ async def test_tab_switching_hl():
 @pytest.mark.asyncio
 async def test_help_overlay_toggle():
     """? key toggles the help overlay visibility."""
+    from textual.widgets import Static
+
     from tui.app import ReconApp
     from tui.screens import SearchScreen
-    from textual.widgets import Static
     async with ReconApp().run_test(size=(140, 40)) as pilot:
         await pilot.app.switch_screen(SearchScreen())
         await pilot.pause(1.5)
-        
+
         # Blur input to let '?' bubble
         pilot.app.screen.query_one("#search_input").blur()
         await pilot.pause(1.0)
-        
+
         screen = pilot.app.screen
         overlay = screen.query_one("#help_overlay", Static)
         assert "hidden" in overlay.classes  # starts hidden
-        
+
         await pilot.press("?")
         await pilot.pause(2.0)
         assert "hidden" not in overlay.classes
-        
+
         await pilot.press("?")
         await pilot.pause(2.0)
         assert "hidden" in overlay.classes
@@ -103,7 +104,7 @@ async def test_help_overlay_toggle():
 async def test_reader_mode_push():
     """r key pushes ReaderModeScreen when a result is selected."""
     from tui.app import ReconApp
-    from tui.screens import SearchScreen, ReaderModeScreen
+    from tui.screens import ReaderModeScreen, SearchScreen
     async with ReconApp().run_test(size=(140, 40)) as pilot:
         await pilot.app.switch_screen(SearchScreen())
         await pilot.pause(1.5)
@@ -112,17 +113,17 @@ async def test_reader_mode_push():
             await pilot.press(ch)
         await pilot.press("enter")
         await pilot.pause(4.0)
-        
+
         # Blur input so 'r' bubbles
         pilot.app.screen.query_one("#search_input").blur()
         await pilot.pause(1.0)
-        
+
         # Navigate to first result and focus it
         result_list = pilot.app.screen.query_one("#result_list")
         result_list.focus()
         await pilot.press("down")
         await pilot.pause(1.0)
-        
+
         await pilot.press("r")
         await pilot.pause(2.5)
         assert isinstance(pilot.app.screen, ReaderModeScreen)
@@ -143,7 +144,7 @@ async def test_theme_validation():
             await pilot.press(ch)
         await pilot.press("enter")
         await pilot.pause(0.5)
-        
+
         status_top = pilot.app.screen.query_one("#status_top", Static)
         assert "ERR: Choose theme" in str(status_top.content)
 
@@ -155,7 +156,7 @@ async def test_theme_validation():
             await pilot.press(ch)
         await pilot.press("enter")
         await pilot.pause(0.5)
-        
+
         assert "theme-arctic-frost" in pilot.app.screen.classes
         assert search_input.value == ""
 
@@ -168,21 +169,21 @@ async def test_assignee_view_toggle():
     async with ReconApp().run_test(size=(140, 40)) as pilot:
         await pilot.app.switch_screen(SearchScreen())
         await pilot.pause(0.5)
-        
+
         pilot.app.screen.query_one("#search_input").blur()
         await pilot.pause(0.1)
-        
+
         screen = pilot.app.screen
         overlay = screen.query_one("#assignee_overlay", Static)
         assert "hidden" in overlay.classes
-        
+
         await pilot.press("a")
         await pilot.pause(0.5)
         assert "hidden" not in overlay.classes
-        
+
         content_lines = str(overlay.content).splitlines()
         assert len(content_lines[0]) == len(content_lines[1])
-        
+
         await pilot.press("a")
         await pilot.pause(0.5)
         assert "hidden" in overlay.classes
@@ -191,8 +192,9 @@ async def test_assignee_view_toggle():
 @pytest.mark.asyncio
 async def test_scrollbar_override():
     """Verify ScrollBarRender VERTICAL_BARS and HORIZONTAL_BARS use full block characters."""
-    from tui.app import ReconApp
     from textual.scrollbar import ScrollBarRender
+
+    from tui.app import ReconApp
     async with ReconApp().run_test() as pilot:
         await pilot.pause(0.1)
         assert "█" in ScrollBarRender.VERTICAL_BARS

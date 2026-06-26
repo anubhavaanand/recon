@@ -1,4 +1,6 @@
-import os, glob, json, re
+import glob
+import os
+import re
 
 # 1. Modify clients/base.py
 base_py_path = "/home/anubhavanand/recon/clients/base.py"
@@ -68,7 +70,7 @@ for theme_file in glob.glob(os.path.join(themes_dir, "*.md")):
     name = os.path.basename(theme_file).replace(".md", "")
     with open(theme_file, "r") as f:
         content = f.read()
-    
+
     # Extract hex codes. Fallback generation if missing specific ones.
     hexes = re.findall(r'`#([A-Fa-f0-9]{6})`', content)
     if len(hexes) >= 4:
@@ -76,12 +78,12 @@ for theme_file in glob.glob(os.path.join(themes_dir, "*.md")):
         primary = "#" + hexes[1]
         secondary = "#" + hexes[2]
         text = "#" + hexes[3]
-        
+
         # Approximate surface, border, error
         surface = "#" + hexes[0] # Not ideal, but will fallback
         border = primary
         error = "#f7768e" # Fallback error
-        
+
         theme_classes += f"\nScreen.theme-{name} {{\n"
         theme_classes += f"    $bg: {bg};\n"
         theme_classes += f"    $surface: {bg};\n" # Need to darken/lighten, but good enough for now

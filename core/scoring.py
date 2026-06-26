@@ -15,9 +15,11 @@ Penalties:
 """
 
 from datetime import datetime, timedelta
-from rapidfuzz import fuzz
 from typing import List, Optional
-from core.models import CrossReference, PatentRecord
+
+from rapidfuzz import fuzz
+
+from core.models import CrossReference
 
 # ── Signal source categories ─────────────────────────────
 _GRANT_SOURCES   = {"nih", "nsf", "doe", "nih reporter", "nsf awards"}

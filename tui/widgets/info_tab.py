@@ -1,5 +1,6 @@
 from rich.markup import escape
 from textual.widgets import Static
+
 from core.models import PatentRecord
 from core.scoring import calculate_signal_score
 
@@ -42,11 +43,11 @@ def _render_status_pill(status: str) -> str:
     if s in ("ACTIVE", "GRANTED"):
         return f"● {s}"
     elif s in ("EXPIRED",):
-        return f"● EXPIRED→PUBLIC DOMAIN"
+        return "● EXPIRED→PUBLIC DOMAIN"
     elif s in ("ABANDONED",):
-        return f"● ABANDONED→FREE TO USE"
+        return "● ABANDONED→FREE TO USE"
     elif s in ("PENDING",):
-        return f"○ PENDING"
+        return "○ PENDING"
     return f"○ {s}"
 
 
@@ -60,7 +61,6 @@ class InfoTab(Static):
                 return
 
             title    = escape(record.title)
-            rec_id   = escape(record.id)
             assignee = escape(record.assignee)
             status   = _render_status_pill(record.status)
             abstract = escape(record.abstract)

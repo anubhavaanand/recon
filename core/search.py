@@ -3,8 +3,16 @@ import json
 import logging
 import re
 from typing import List, Optional
+
+from clients.patent_apis import (
+    EPOClient,
+    GooglePatentsClient,
+    LensClient,
+    PatsnapClient,
+    USPTOClient,
+    WIPOClient,
+)
 from core.models import PatentRecord
-from clients.patent_apis import USPTOClient, EPOClient, WIPOClient, LensClient, GooglePatentsClient, PatsnapClient
 from storage.cache import CacheDatabase
 
 logger = logging.getLogger("recon")
@@ -205,9 +213,10 @@ async def semantic_search(query: str, top_k: int = 20) -> list[PatentRecord]:
 
 
 def _get_stale_cache(db: CacheDatabase, query: str) -> Optional[List[PatentRecord]]:
-    from storage.cache import _query_hash
     import json
+
     from core.models import CrossReference
+    from storage.cache import _query_hash
 
     qhash = _query_hash(query)
     with db.get_connection() as conn:

@@ -1,6 +1,7 @@
 import pytest
-from core.search import sort_and_merge_results
+
 from core.models import PatentRecord
+from core.search import sort_and_merge_results
 
 
 def _make_record(id: str, filed: str) -> PatentRecord:
@@ -89,8 +90,9 @@ def test_single_result():
 
 @pytest.mark.asyncio
 async def test_search_all_returns_list():
-    from core.search import search_all
     from unittest.mock import patch
+
+    from core.search import search_all
     with patch("core.search.search_all") as mock:
         mock.return_value = [_make_record("1", "2023-01-01")]
         result = await search_all("test")
@@ -152,12 +154,12 @@ async def test_lens_id_resolution(monkeypatch):
     class MockResponse:
         status_code = 200
         text = "<html><title>US 11,000,000 B2 - Novel Battery</title></html>"
-        
+
     async def mock_get(*args, **kwargs):
         return MockResponse()
-        
+
     monkeypatch.setattr("httpx.AsyncClient.get", mock_get)
-    
+
     from core.models import PatentRecord
     async def mock_gp_fetch(self, patent_id):
         return PatentRecord(
@@ -172,7 +174,7 @@ async def test_lens_id_resolution(monkeypatch):
             family_id="F123"
         )
     monkeypatch.setattr("clients.scrapers.GooglePatentsScraper.fetch", mock_gp_fetch)
-    
+
     scraper = LensScraper()
     record = await scraper.fetch("039-653-535-961-827")
     assert record is not None
@@ -182,21 +184,21 @@ async def test_lens_id_resolution(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_search_all_partial_timeout(monkeypatch):
+    from clients.patent_apis import EPOClient, USPTOClient
     from core.search import search_all
-    from clients.patent_apis import USPTOClient, EPOClient
-    
+
     async def mock_search_hang(*args, **kwargs):
         import asyncio
         raise asyncio.TimeoutError()
-        
+
     async def mock_search_ok(*args, **kwargs):
         return [_make_record("EPO123", "2023-01-01")]
-        
+
     monkeypatch.setattr(USPTOClient, "search", mock_search_hang)
     monkeypatch.setattr(EPOClient, "search", mock_search_ok)
     monkeypatch.setattr("storage.cache.CacheDatabase.get_cached_search", lambda self, q: None)
     monkeypatch.setattr("storage.cache.CacheDatabase.save_search_results", lambda *args, **kwargs: None)
-    
+
     results = await search_all("test query", sources=["uspto", "epo"])
     assert len(results) == 1
     assert results[0].id == "EPO123"

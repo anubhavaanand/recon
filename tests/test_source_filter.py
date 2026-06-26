@@ -1,8 +1,8 @@
-import pytest
-from unittest.mock import AsyncMock
-from core.search import search_all, ALL_SOURCES, SOURCE_REGISTRY, sort_and_merge_results
-from core.models import PatentRecord
 
+import pytest
+
+from core.models import PatentRecord
+from core.search import ALL_SOURCES, SOURCE_REGISTRY, search_all
 
 _MOCK_RECORD = PatentRecord(
     id="MOCK", title="T", assignee="X", dates={"filed": "2023-01-01"},

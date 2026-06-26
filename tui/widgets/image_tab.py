@@ -1,11 +1,12 @@
-import os
 import asyncio
+import os
 import subprocess
 from enum import Enum
 from urllib.parse import urlparse
 
 from rich.markup import escape
 from textual.widgets import Static
+
 from core.models import PatentRecord
 
 

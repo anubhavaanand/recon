@@ -2,14 +2,13 @@
 Score algorithm unit tests — PRD §5.5.
 37-test minimum coverage (PRD §10).
 """
-import pytest
+from core.models import CrossReference
 from core.scoring import (
     calculate_signal_score,
+    match_entity,
     render_score_bar,
     render_signal_dots,
-    match_entity,
 )
-from core.models import CrossReference
 
 
 def _ref(source: str, conf: float = 100.0, date: str | None = None) -> CrossReference:

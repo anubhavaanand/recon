@@ -1,6 +1,7 @@
 import dataclasses
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict
+from typing import Dict, List, Optional
+
 
 @dataclass
 class CrossReference:
@@ -39,7 +40,7 @@ class PatentRecord:
         self.id = self.id if self.id else "UNKNOWN"
         import re
         self.id = re.sub(r'[\s_\-]', '', self.id).upper()
-        
+
         def clean_text(text: str) -> str:
             if not text or text == "[?]" or text == "UNKNOWN":
                 return text

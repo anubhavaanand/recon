@@ -1,7 +1,8 @@
-import os
 import pytest
+
+from cli.export import export_pdf, export_records
 from core.models import PatentRecord
-from cli.export import export_records, export_pdf
+
 
 @pytest.fixture
 def sample_records():
@@ -52,16 +53,16 @@ def test_export_pdf_via_function(sample_records, tmp_path):
     """Test the dedicated export_pdf function with title page and claims."""
     output_file = tmp_path / "patents.pdf"
     export_pdf(sample_records, str(output_file))
-    
+
     # Verify file exists and is valid PDF
     assert output_file.exists()
     pdf_size = output_file.stat().st_size
     assert pdf_size > 2000  # Title page + 2 patent pages should be > 2KB
-    
+
     with open(output_file, 'rb') as f:
         header = f.read(4)
         assert header == b"%PDF"
-    
+
     # Verify PDF structure: should have 1 title page + 2 patent pages (3 total)
     # The /Count entry in the PDF should show 3 pages
     pdf_content = output_file.read_bytes()

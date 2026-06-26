@@ -1,6 +1,6 @@
 """Tests for the inline slash command palette (Phase 3)."""
 
-from tui.widgets.command_palette import CommandPalette, SLASH_COMMANDS
+from tui.widgets.command_palette import SLASH_COMMANDS, CommandPalette
 
 
 def test_filter_all_commands_on_slash():

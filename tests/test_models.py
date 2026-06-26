@@ -1,4 +1,5 @@
-from core.models import PatentRecord, CrossReference
+from core.models import CrossReference, PatentRecord
+
 
 def test_models():
     cr = CrossReference(source="NSF", url="http://example.com")

@@ -1,8 +1,10 @@
-from rich.markup import escape
-from textual.widgets import ListView, ListItem, Label
-from textual.app import ComposeResult
-from core.models import PatentRecord
 from datetime import date, datetime
+
+from rich.markup import escape
+from textual.app import ComposeResult
+from textual.widgets import Label, ListItem, ListView
+
+from core.models import PatentRecord
 
 
 def _age_str(filed_date: str) -> str:

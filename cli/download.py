@@ -1,7 +1,9 @@
-import httpx
-import os
 from pathlib import Path
+
+import httpx
+
 from core.models import PatentRecord
+
 
 async def download_patent_assets(record: PatentRecord, base_path: str = "downloads"):
     """
@@ -10,14 +12,14 @@ async def download_patent_assets(record: PatentRecord, base_path: str = "downloa
     """
     target_dir = Path(base_path) / record.id
     target_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # 1. Save metadata as JSON
-    import json
     import dataclasses
+    import json
     meta_path = target_dir / "metadata.json"
     with open(meta_path, "w") as f:
         json.dump(dataclasses.asdict(record), f, indent=2)
-        
+
     # 2. Download figures
     if record.image_urls:
         async with httpx.AsyncClient(timeout=30.0, trust_env=False) as client:
@@ -31,5 +33,5 @@ async def download_patent_assets(record: PatentRecord, base_path: str = "downloa
                             f.write(response.content)
                 except Exception as e:
                     print(f"ERR: Failed to download figure {i}: {e}")
-                    
+
     return target_dir

@@ -1,5 +1,5 @@
-from textual.widgets import Static
 from textual.reactive import reactive
+from textual.widgets import Static
 
 
 class AlertBanner(Static):

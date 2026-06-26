@@ -1,16 +1,18 @@
-import typer
 import asyncio
 import contextlib
 import time
 from pathlib import Path
 from typing import Optional
-from tui.app import ReconApp
-from storage.cache import CacheDatabase
-from cli.export import export_records
-from core.config import load_config, save_config, Config
-from core.search import search_all, ALL_SOURCES
+
+import typer
 from rich.console import Console
 from rich.table import Table
+
+from cli.export import export_records
+from core.config import load_config, save_config
+from core.search import ALL_SOURCES, search_all
+from storage.cache import CacheDatabase
+from tui.app import ReconApp
 
 app = typer.Typer()
 config_app = typer.Typer()
@@ -47,7 +49,7 @@ def search(
 ):
     """
     Search for patents.
-    
+
     Without a query: launches interactive TUI.
     With a query: performs CLI search and displays results.
     Use --file for batch searches from a file.
@@ -74,7 +76,7 @@ def search(
         for q in queries:
             console.print(f"[cyan]Searching: {q}[/cyan]")
             try:
-                batch = asyncio.run(search_all(q, sources=sources))
+                batch = asyncio.run(search_all(q, sources=source.split(",") if source else None))
                 all_results.extend(batch)
             except Exception as e:
                 console.print(f"[red]ERR: Batch search failed for '{q}': {e}[/red]")
@@ -109,7 +111,8 @@ def search(
             out = jsonlib.dumps([r.__dict__ if hasattr(r, "__dict__") else str(r) for r in results], indent=2)
             console.print(out)
         elif fmt == "csv":
-            import csv, io
+            import csv
+            import io
             buf = io.StringIO()
             writer = csv.writer(buf)
             writer.writerow(["id", "title", "assignee", "filed_date", "source"])
@@ -235,7 +238,7 @@ def export(
     """Export the local patent collection."""
     db = CacheDatabase()
     records = db.get_collection()
-    
+
     if not records:
         typer.echo("ERR: Collection is empty. Save patents with 's' first.")
         raise typer.Exit(code=1)
@@ -259,41 +262,50 @@ def config_set(
 ):
     """Set API keys for patent sources and AI services."""
     config = load_config()
-    
+
     # If any keys are provided via CLI, update them and warn the user
     if any([uspto_key, epo_key, epo_secret, lens_key, patsnap_key, nim_key]):
-        flags_str = ", ".join(
-            f"--{k}" for k, v in [("uspto-key", uspto_key), ("epo-key", epo_key), ("epo-secret", epo_secret), ("lens-key", lens_key), ("patsnap-key", patsnap_key), ("nim-key", nim_key)] if v
-        )
-        console.print(f"[red]WARNING: Providing API keys via CLI arguments is insecure. They may be leaked in shell history or process lists.[/red]")
-        if uspto_key: config.uspto_api_key = uspto_key
-        if epo_key: config.epo_consumer_key = epo_key
-        if epo_secret: config.epo_consumer_secret = epo_secret
-        if lens_key: config.lens_api_key = lens_key
-        if patsnap_key: config.patsnap_api_key = patsnap_key
-        if nim_key: config.nvidia_nim_api_key = nim_key
+        console.print("[red]WARNING: Providing API keys via CLI arguments is insecure. They may be leaked in shell history or process lists.[/red]")
+        if uspto_key:
+            config.uspto_api_key = uspto_key
+        if epo_key:
+            config.epo_consumer_key = epo_key
+        if epo_secret:
+            config.epo_consumer_secret = epo_secret
+        if lens_key:
+            config.lens_api_key = lens_key
+        if patsnap_key:
+            config.patsnap_api_key = patsnap_key
+        if nim_key:
+            config.nvidia_nim_api_key = nim_key
     else:
         # Fallback to secure interactive mode
         console.print("[yellow]Enter your API keys (leave blank to keep current):[/yellow]")
-        
+
         uspto = typer.prompt("USPTO API Key", default=config.uspto_api_key or "", hide_input=True, show_default=False)
-        if uspto: config.uspto_api_key = uspto
-            
+        if uspto:
+            config.uspto_api_key = uspto
+
         epo_k = typer.prompt("EPO Consumer Key", default=config.epo_consumer_key or "", hide_input=True, show_default=False)
-        if epo_k: config.epo_consumer_key = epo_k
-            
+        if epo_k:
+            config.epo_consumer_key = epo_k
+
         epo_s = typer.prompt("EPO Consumer Secret", default=config.epo_consumer_secret or "", hide_input=True, show_default=False)
-        if epo_s: config.epo_consumer_secret = epo_s
-            
+        if epo_s:
+            config.epo_consumer_secret = epo_s
+
         lens = typer.prompt("Lens API Key", default=config.lens_api_key or "", hide_input=True, show_default=False)
-        if lens: config.lens_api_key = lens
+        if lens:
+            config.lens_api_key = lens
 
         patsnap = typer.prompt("PatSnap API Key", default=config.patsnap_api_key or "", hide_input=True, show_default=False)
-        if patsnap: config.patsnap_api_key = patsnap
+        if patsnap:
+            config.patsnap_api_key = patsnap
 
         nim = typer.prompt("NVIDIA NIM API Key", default=config.nvidia_nim_api_key or "", hide_input=True, show_default=False)
-        if nim: config.nvidia_nim_api_key = nim
-    
+        if nim:
+            config.nvidia_nim_api_key = nim
+
     save_config(config)
     typer.echo("Configuration updated successfully and secured (chmod 600).")
 
@@ -303,7 +315,7 @@ def config_show():
     config = load_config()
     def mask(s):
         return f"{s[:4]}...{s[-4:]}" if s and len(s) > 8 else "****"
-    
+
     typer.echo(f"USPTO API Key: {mask(config.uspto_api_key)}")
     typer.echo(f"EPO Consumer Key: {mask(config.epo_consumer_key)}")
     typer.echo(f"EPO Consumer Secret: {mask(config.epo_consumer_secret)}")
@@ -316,28 +328,29 @@ def config_show():
 @config_app.command("test")
 def config_test():
     """Test configured API keys."""
-    from clients.patent_apis import USPTOClient, EPOClient, LensClient, PatsnapClient
     import asyncio
-    
+
+    from clients.patent_apis import EPOClient, LensClient, PatsnapClient, USPTOClient
+
     async def run_tests():
         console.print("[cyan]Testing API Keys...[/cyan]")
         uspto = USPTOClient()
         epo = EPOClient()
         lens = LensClient()
         patsnap = PatsnapClient()
-        
+
         uspto_ok, uspto_msg = await uspto.validate_credentials()
         if uspto_ok:
             console.print(f"[green]✓ {uspto_msg}[/green]")
         else:
             console.print(f"[red]✗ {uspto_msg}[/red]")
-            
+
         epo_ok, epo_msg = await epo.validate_credentials()
         if epo_ok:
             console.print(f"[green]✓ {epo_msg}[/green]")
         else:
             console.print(f"[red]✗ {epo_msg}[/red]")
-            
+
         lens_ok, lens_msg = await lens.validate_credentials()
         if lens_ok:
             console.print(f"[green]✓ {lens_msg}[/green]")
@@ -349,7 +362,7 @@ def config_test():
             console.print(f"[green]✓ {patsnap_msg}[/green]")
         else:
             console.print(f"[red]✗ {patsnap_msg}[/red]")
-            
+
     asyncio.run(run_tests())
 
 # ── Admin commands ─────────────────────────────────────────
@@ -404,7 +417,7 @@ def admin_cache_stats():
             console.print(f"  {row['query_text'][:60]:60s}  hits={row['hit_count']}  last={row['last_accessed'] or 'never'}")
 
     eviction = db.enforce_eviction_policy()
-    console.print(f"\n[bold]Eviction (dry run):[/bold]")
+    console.print("\n[bold]Eviction (dry run):[/bold]")
     console.print(f"  Expired deleted:   {eviction['deleted_expired']}")
     console.print(f"  LRU deleted:       {eviction['deleted_lru']}")
     console.print(f"  Old history:       {eviction['deleted_history']}")
@@ -433,7 +446,6 @@ def admin_diagnostics(
     api_ping: bool = typer.Option(False, "--api-ping", help="Ping all configured APIs and show latency."),
 ):
     """Show source health: circuit breaker status, error counts, rate limits."""
-    from core.metrics import MetricsCollector, VERSION, SESSION_ID
 
     db = CacheDatabase()
     sources = db.get_all_source_health()
@@ -469,6 +481,7 @@ def admin_diagnostics(
 
     if api_ping:
         import asyncio
+
         import httpx
 
         console.print("\n[cyan]API Ping Results:[/cyan]")
@@ -506,7 +519,8 @@ def admin_diagnostics(
 @admin_app.command("migrate")
 def admin_migrate():
     """Run pending database migrations."""
-    from storage.migrate import migrate as run_migrations, validate
+    from storage.migrate import migrate as run_migrations
+    from storage.migrate import validate
     db = CacheDatabase()
     applied = run_migrations(db.db_path)
     if applied:

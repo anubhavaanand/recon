@@ -1,11 +1,12 @@
-import sqlite3
-import json
-import hashlib
-import dataclasses
 import contextlib
+import dataclasses
+import hashlib
+import json
+import sqlite3
 from pathlib import Path
 from typing import Optional
-from core.models import PatentRecord, CrossReference
+
+from core.models import CrossReference, PatentRecord
 
 SCHEMA = """
 -- ============================================================================
@@ -424,7 +425,7 @@ class CacheDatabase:
                        VALUES (?, ?, ?, ?, ?, ?, ?)""",
                     (query_text, qhash, result_count, json.dumps(sources or []), execution_time_ms, cache_hit, tui_mode),
                 )
-                return cursor.lastrowid
+                return cursor.lastrowid or 0
 
     def get_search_history(self, limit: int = 50) -> list[dict]:
         with contextlib.closing(self.get_connection()) as conn:
@@ -518,7 +519,6 @@ class CacheDatabase:
             return dict(row) if row else None
 
     def upsert_api_metadata(self, source_name: str, **kwargs) -> None:
-        fields = ", ".join(f"{k} = ?" for k in kwargs)
         values = list(kwargs.values())
         with contextlib.closing(self.get_connection()) as conn:
             with conn:
@@ -547,7 +547,7 @@ class CacheDatabase:
                        VALUES (?, ?, ?, ?, ?, ?)""",
                     (export_format, file_path, collection_name, record_count, file_size_bytes, cli_mode),
                 )
-                return cursor.lastrowid
+                return cursor.lastrowid or 0
 
     # ── terminal_sessions ────────────────────────────────────────────────────
 

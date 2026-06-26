@@ -6,8 +6,6 @@ Renders a CitationGraph as a navigable ASCII tree (like the Linux
 
 from __future__ import annotations
 
-from typing import Optional
-
 from rich.markup import escape
 from textual.widgets import Static
 
@@ -32,7 +30,7 @@ class CitationTree(Static):
         assignee = escape(graph.assignee) if graph.assignee else "[?]"
 
         lines: list[str] = [
-            f"# Citation Graph",
+            "# Citation Graph",
             f"{patent_id} ({assignee})",
             "│",
         ]

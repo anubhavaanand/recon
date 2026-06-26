@@ -1,9 +1,11 @@
 import csv
 import json
 from pathlib import Path
-from typing import List, Any
-from core.models import PatentRecord
+from typing import Any, List
+
 import fpdf
+
+from core.models import PatentRecord
 
 
 def validate_export_path(output_path: str) -> str:
@@ -30,7 +32,7 @@ def validate_export_path(output_path: str) -> str:
 
 def _safe_csv_field(value: str) -> str:
     """Sanitize a CSV field to prevent formula injection in spreadsheet apps.
-    
+
     Leading =, +, -, @ can trigger DDE/formula execution in Excel/Google Sheets.
     Prefix them with a tab to neutralize.
     """
@@ -43,7 +45,7 @@ def _export_csv(records: List[PatentRecord], output_path: str):
     if not records:
         Path(output_path).touch()
         return
-        
+
     with open(output_path, mode='w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow(["ID", "Title", "Assignee", "Filed Date", "Status", "Score"])
@@ -62,10 +64,10 @@ def _export_csv(records: List[PatentRecord], output_path: str):
 def _export_json(records: List[PatentRecord], output_path: str):
     import dataclasses
     def _default(o: Any):
-        if dataclasses.is_dataclass(o):
+        if dataclasses.is_dataclass(o) and not isinstance(o, type):
             return dataclasses.asdict(o)
         return str(o)
-        
+
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump([_default(r) for r in records], f, indent=2)
 
@@ -91,7 +93,7 @@ def _export_pdf(records: List[PatentRecord], output_path: str):
     """Generate PDF export with title page and individual patent pages."""
     pdf = fpdf.FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
-    
+
     # Title page
     pdf.add_page()
     pdf.set_font("helvetica", style="B", size=24)
@@ -103,7 +105,7 @@ def _export_pdf(records: List[PatentRecord], output_path: str):
     pdf.set_font("helvetica", size=12)
     pdf.ln(50)
     pdf.cell(0, 10, f"Generated: {Path(output_path).stem}", align="C")
-    
+
     # Patent pages
     for record in records:
         pdf.add_page()
@@ -111,20 +113,20 @@ def _export_pdf(records: List[PatentRecord], output_path: str):
         safe_title = record.title.encode('latin-1', 'replace').decode('latin-1')
         pdf.multi_cell(w=180, h=8, text=safe_title, align="L")
         pdf.ln(3)
-        
+
         # ID, Assignee, Dates row
         pdf.set_font("helvetica", size=10)
         pdf.multi_cell(w=180, h=6, text=f"ID: {record.id}", align="L")
         safe_assignee = record.assignee.encode('latin-1', 'replace').decode('latin-1')
         pdf.multi_cell(w=180, h=6, text=f"Assignee: {safe_assignee}", align="L")
-        
+
         # Dates
         dates_str = " | ".join([f"{k}: {v}" for k, v in record.dates.items()])
         safe_dates = dates_str.encode('latin-1', 'replace').decode('latin-1')
         pdf.multi_cell(w=180, h=6, text=safe_dates, align="L")
         pdf.multi_cell(w=180, h=6, text=f"Status: {record.status}", align="L")
         pdf.ln(5)
-        
+
         # Abstract
         pdf.set_font("helvetica", style="B", size=11)
         pdf.cell(0, 8, "Abstract", align="L")
@@ -133,7 +135,7 @@ def _export_pdf(records: List[PatentRecord], output_path: str):
         safe_abstract = record.abstract.encode('latin-1', 'replace').decode('latin-1')
         pdf.multi_cell(w=180, h=6, text=safe_abstract, align="L")
         pdf.ln(5)
-        
+
         # Claims
         if record.claims:
             pdf.set_font("helvetica", style="B", size=11)
@@ -144,7 +146,7 @@ def _export_pdf(records: List[PatentRecord], output_path: str):
                 safe_claim = claim.encode('latin-1', 'replace').decode('latin-1')
                 claim_text = f"{i}. {safe_claim}"
                 pdf.multi_cell(w=180, h=6, text=claim_text, align="L")
-        
+
     pdf.output(output_path)
 
 def export_records(records: List[PatentRecord], format: str, output_path: str):

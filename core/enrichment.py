@@ -15,9 +15,8 @@ from typing import Optional
 
 import httpx
 
-from core.models import PatentRecord, CrossReference
+from core.models import CrossReference, PatentRecord
 from storage.cache import CacheDatabase
-
 
 _SIGNAL_DOMAINS: dict[str, str] = {
     "nih": "NIH RePORTER (grants)",
@@ -52,13 +51,17 @@ async def _search_arxiv(query: str) -> Optional[CrossReference]:
                 ns = {'atom': 'http://www.w3.org/2005/Atom'}
                 entry = root.find('atom:entry', ns)
                 if entry is not None:
-                    title = entry.find('atom:title', ns).text
-                    summary = entry.find('atom:summary', ns).text
-                    id_url = entry.find('atom:id', ns).text
-                    published = entry.find('atom:published', ns).text
+                    title_el = entry.find('atom:title', ns)
+                    summary_el = entry.find('atom:summary', ns)
+                    id_el = entry.find('atom:id', ns)
+                    published_el = entry.find('atom:published', ns)
+                    title = title_el.text if title_el is not None else None
+                    summary = summary_el.text if summary_el is not None else None
+                    id_url = id_el.text if id_el is not None else None
+                    published = published_el.text if published_el is not None else None
                     return CrossReference(
                         source="arxiv",
-                        url=id_url,
+                        url=id_url or "",
                         date=published[:10] if published else None,
                         metadata={"title": title.strip().replace("\n", " ") if title else "", "snippet": summary[:200] if summary else ""}
                     )

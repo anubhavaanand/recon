@@ -1,9 +1,16 @@
-import pytest
 import httpx
-from clients.patent_apis import USPTOClient, EPOClient, WIPOClient, LensClient, GooglePatentsClient, PatsnapClient
+import pytest
+
 from clients.base import BaseAsyncClient
-from core.models import PatentRecord
+from clients.patent_apis import (
+    EPOClient,
+    GooglePatentsClient,
+    LensClient,
+    USPTOClient,
+    WIPOClient,
+)
 from core.config import Config
+from core.models import PatentRecord
 
 
 @pytest.mark.asyncio
@@ -32,7 +39,7 @@ async def test_epo_search_no_keys_falls_to_mock(monkeypatch):
     async def mock_search_epo(query):
         return [PatentRecord(id="EP123", title="Mock Scraped", assignee="[?]", dates={}, abstract="[?]", claims=[], image_urls=[], status="", family_id="")]
     monkeypatch.setattr("clients.scrapers.search_epo_patents", mock_search_epo)
-    
+
     client = EPOClient()
     results = await client.search("quantum computing")
     assert len(results) > 0

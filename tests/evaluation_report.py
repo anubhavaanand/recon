@@ -25,7 +25,6 @@ def run_pytest() -> dict:
         capture_output=True, text=True, timeout=180,
     )
     stdout = result.stdout
-    stderr = result.stderr
     passed = failed = skipped = 0
     summary_line = ""
     for line in reversed(stdout.splitlines()):
@@ -138,8 +137,8 @@ def generate_report(format: str = "markdown") -> str:
     lines.append("## Test Summary")
     lines.append("")
     total = test_results["passed"] + test_results["failed"] + test_results["skipped"]
-    lines.append(f"| Metric | Value |")
-    lines.append(f"|--------|-------|")
+    lines.append("| Metric | Value |")
+    lines.append("|--------|-------|")
     lines.append(f"| **Total** | {total} |")
     lines.append(f"| **Passed** | {test_results['passed']} |")
     lines.append(f"| **Failed** | {test_results['failed']} |")
@@ -147,7 +146,7 @@ def generate_report(format: str = "markdown") -> str:
     if test_results["coverage_pct"] is not None:
         lines.append(f"| **Coverage** | {test_results['coverage_pct']:.1f}% |")
     else:
-        lines.append(f"| **Coverage** | N/A (--cov not available) |")
+        lines.append("| **Coverage** | N/A (--cov not available) |")
     lines.append("")
     lines.append("## Constitution Compliance Audit")
     lines.append("")

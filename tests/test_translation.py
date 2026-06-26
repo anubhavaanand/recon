@@ -1,5 +1,6 @@
 import pytest
-from core.translation import _is_non_english, _cache_key, translate_text
+
+from core.translation import _cache_key, _is_non_english, translate_text
 
 
 class TestIsNonEnglish:

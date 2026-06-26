@@ -1,4 +1,5 @@
 import importlib
+
 import pytest
 
 PROJECT_PACKAGES = ["cli", "tui", "core", "clients", "storage"]
@@ -46,7 +47,6 @@ def test_search_patents_import():
 
 
 def test_circular_dependencies():
-    visited = set()
     for mod_name in [
         "core.models",
         "core.search",
@@ -85,8 +85,9 @@ def test_external_dependencies_available():
 
 def test_optional_dependencies_graceful():
     try:
+        import httpx  # noqa: F401
+
         from core.intelligence import SynthesisEngine
-        import httpx
         assert callable(SynthesisEngine)
     except ImportError:
         pass

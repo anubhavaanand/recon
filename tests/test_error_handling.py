@@ -8,17 +8,12 @@ Audits all error messages in the codebase for:
 - Specificity: No generic "An error occurred" messages
 
 Constitution Principle (VIII): "Dry, Actionable Error Voice"
-"Error messages must be terse, factual, and strictly actionable. 
+"Error messages must be terse, factual, and strictly actionable.
 No apologies, no conversational fluff. Provide exact reason and resolution steps."
 """
 
-import pytest
-import tempfile
-import sqlite3
-import os
-from unittest.mock import Mock, patch, MagicMock
-from core.models import PatentRecord
 
+import pytest
 
 # ============================================================================
 # Test 1: Network Timeout Error
@@ -27,25 +22,25 @@ from core.models import PatentRecord
 def test_network_timeout_error():
     """
     Test error handling for network timeouts.
-    
+
     Requirements:
     - REASON: Exact cause of timeout (connection, socket, DNS)
     - RESOLUTION: Actionable steps (retry, check connectivity, use proxy)
     - VOICE: Dry, factual (no "try to", "unfortunately", "apologies")
     """
     error_message = "Network timeout connecting to patents.google.com: Connection reset after 30s"
-    
+
     # Verify REASON is specific (not generic)
     assert "timeout" in error_message.lower()
     assert "30s" in error_message  # Specific duration
     assert "patents.google.com" in error_message  # Specific endpoint
     assert "reset" in error_message  # Specific failure type
-    
+
     # RESOLUTION should be in the full error context (prefix with actionable guidance)
     resolution = "Retry with exponential backoff. Check: DNS resolution, firewall, proxy settings."
     assert "retry" in resolution.lower()
     assert "check" in resolution.lower()
-    
+
     # VOICE check: No conversational markers
     assert "sorry" not in error_message.lower()
     assert "unfortunately" not in error_message.lower()
@@ -67,7 +62,7 @@ def test_network_timeout_actionable():
             "4. Check service status: https://status.patents.google.com"
         ]
     }
-    
+
     assert error_context["reason"]
     assert error_context["endpoint"]
     assert len(error_context["resolution_steps"]) >= 3
@@ -83,7 +78,7 @@ def test_network_timeout_actionable():
 def test_rate_limit_429_error():
     """
     Test error handling for API rate limits (HTTP 429).
-    
+
     Requirements:
     - REASON: Specific rate limit (e.g., "100 requests/hour")
     - RESOLUTION: API key guidance, retry-after, backoff strategy
@@ -91,16 +86,16 @@ def test_rate_limit_429_error():
     - Special: Must include API key setup guidance
     """
     error_message = "Source [USPTO] rate limit exceeded: 100 requests/hour limit reached. Next window: 2026-05-13 14:32 UTC"
-    
+
     # REASON: Specific limit and window
     assert "100 requests/hour" in error_message
     assert "2026-05-13 14:32 UTC" in error_message
     assert "[USPTO]" in error_message  # Source is identified
-    
+
     # VOICE: No conversational fluff
     assert "sorry" not in error_message.lower()
     assert "unfortunately" not in error_message.lower()
-    
+
     # Resolution should include API key guidance
     resolution = "Provide API key via LENS_API_KEY or 'recon config --api-key' to increase limit to 1000/hour. Otherwise, wait until 2026-05-13 14:32 UTC and retry."
     assert "api key" in resolution.lower()
@@ -123,7 +118,7 @@ def test_rate_limit_api_key_guidance():
         ],
         "documentation": "https://docs.patents.example.com/authentication"
     }
-    
+
     assert "unauthenticated" in error_guidance["default_limit"]
     assert len(error_guidance["resolution"]) >= 3
     for step in error_guidance["resolution"]:
@@ -140,7 +135,7 @@ def test_rate_limit_includes_retry_after():
         "Retry-After: 3600 seconds (1 hour). "
         "Action: Implement exponential backoff in retry handler."
     )
-    
+
     assert "Retry-After: 3600" in error_with_retry_after
     assert "backoff" in error_with_retry_after.lower()
 
@@ -152,7 +147,7 @@ def test_rate_limit_includes_retry_after():
 def test_malformed_api_response():
     """
     Test error handling for malformed/unparseable API responses.
-    
+
     Requirements:
     - REASON: Specific field or parsing failure (JSON, schema)
     - RESOLUTION: Validation steps, field mapping, contact API provider
@@ -164,16 +159,16 @@ def test_malformed_api_response():
         "Expected schema: {applicant_name, filing_date, classification}. "
         "Action: Verify response format with EPO API documentation or report to maintainers."
     )
-    
+
     # REASON: Specific field and record ID
     assert "applicant_name" in error_message
     assert "EP123456789" in error_message
     assert "schema" in error_message
-    
+
     # Resolution provided
     assert "verify" in error_message.lower()
     assert "documentation" in error_message.lower()
-    
+
     # No apologies
     assert "sorry" not in error_message.lower()
 
@@ -195,7 +190,7 @@ def test_malformed_response_includes_field_info():
             "3. Report issue: github.com/recon/recon/issues"
         ]
     }
-    
+
     assert error_detail["parsing_error"]
     assert error_detail["received_value"]
     assert error_detail["expected_format"]
@@ -210,7 +205,7 @@ def test_malformed_response_includes_field_info():
 def test_missing_patent_image():
     """
     Test error handling for missing patent images.
-    
+
     Requirements:
     - REASON: Image not found, format unsupported, or API failure
     - RESOLUTION: Fallback options (text, external viewer, alternative sources)
@@ -223,15 +218,15 @@ def test_missing_patent_image():
         "Fallback: View on Google Patents (https://patents.google.com/patent/US10123456B2). "
         "Alternative: USPTO PAIR (https://pair.uspto.gov/)"
     )
-    
+
     # REASON: Specific patent ID and endpoint
     assert "US10123456B2" in error_message
     assert "TIFF" in error_message
-    
+
     # RESOLUTION: Fallback options included
     assert "patents.google.com" in error_message
     assert "pair.uspto.gov" in error_message
-    
+
     # No conversational markers
     assert "sorry" not in error_message.lower()
 
@@ -251,7 +246,7 @@ def test_missing_image_includes_fallback():
             "4. Text-only mode: recon view US10123456B2 --no-images"
         ]
     }
-    
+
     assert error_with_fallback["patent_id"]
     assert len(error_with_fallback["fallbacks"]) >= 3
     # Each fallback is actionable (URL or command)
@@ -266,7 +261,7 @@ def test_missing_image_includes_fallback():
 def test_unsupported_terminal_protocol():
     """
     Test error handling for unsupported terminal capabilities.
-    
+
     Requirements:
     - REASON: Terminal protocol not supported (e.g., no sixel, no kitty)
     - RESOLUTION: Config steps to upgrade or switch terminal
@@ -279,16 +274,16 @@ def test_unsupported_terminal_protocol():
         "Config: Set TERM=xterm-kitty or use 'recon config --terminal=kitty'. "
         "Fallback: recon view --text-only skips image rendering."
     )
-    
+
     # REASON: Specific terminal and missing capability
     assert "Sixel" in error_message
     assert "xterm-256color" in error_message
-    
+
     # RESOLUTION: Config steps
     assert "TERM=" in error_message
     assert "config" in error_message.lower()
     assert "--terminal" in error_message
-    
+
     # Fallback provided
     assert "--text-only" in error_message
 
@@ -311,7 +306,7 @@ def test_terminal_capability_includes_config_steps():
         "recon_config_check": "recon config --show-terminal",
         "fallback": "recon view US10123456B2 --no-images (text-only)"
     }
-    
+
     assert error_config["missing_feature"]
     assert len(error_config["supported_terminals"]) >= 3
     assert "TERM=" in error_config["supported_terminals"][0]
@@ -325,7 +320,7 @@ def test_terminal_capability_includes_config_steps():
 def test_corrupted_cache_error():
     """
     Test error handling for corrupted cache database.
-    
+
     Requirements:
     - REASON: Specific corruption type (schema mismatch, disk error, truncation)
     - RESOLUTION: Clear recovery steps (delete cache, reinitialize)
@@ -337,16 +332,16 @@ def test_corrupted_cache_error():
         "Recovery: rm ~/.recon/cache.db && recon search patent --force-refresh. "
         "Note: First search will take longer (cache warming). Subsequent searches use cache."
     )
-    
+
     # REASON: Specific corruption type
     assert "truncated" in error_message
     assert "database disk image is malformed" in error_message
     assert "recon_cache.db" in error_message
-    
+
     # RESOLUTION: Clear recovery command
     assert "rm ~/.recon/cache.db" in error_message
     assert "--force-refresh" in error_message
-    
+
     # No apologies
     assert "sorry" not in error_message.lower()
 
@@ -367,7 +362,7 @@ def test_corrupted_cache_recovery_steps():
         ],
         "expected_behavior_after_recovery": "First search slower (10-15s), subsequent searches cached (<100ms)"
     }
-    
+
     assert recovery_plan["path"]
     assert len(recovery_plan["recovery_steps"]) >= 3
     for step in recovery_plan["recovery_steps"]:
@@ -382,7 +377,7 @@ def test_corrupted_cache_recovery_steps():
 def test_invalid_search_query():
     """
     Test error handling for invalid search queries.
-    
+
     Requirements:
     - REASON: Specific validation failure (empty, too many operators, bad syntax)
     - RESOLUTION: Query syntax help, valid examples
@@ -394,18 +389,18 @@ def test_invalid_search_query():
         "Example: neural AND network OR 'machine learning' NOT deprecated. "
         "Help: recon search --help-syntax"
     )
-    
+
     # REASON: Specific syntax error
     assert "OR OR" in error_message
     assert "Boolean syntax" in error_message
-    
+
     # RESOLUTION: Syntax help and examples
     assert "AND" in error_message
     assert "OR" in error_message
     assert "NOT" in error_message
     assert "Example:" in error_message
     assert "--help-syntax" in error_message
-    
+
     # No conversational fluff
     assert "sorry" not in error_message.lower()
     assert "please" not in error_message.lower()
@@ -434,7 +429,7 @@ def test_invalid_query_includes_syntax_help():
         ],
         "help_command": "recon search --help-syntax"
     }
-    
+
     assert validation_error["issue"]
     assert len(validation_error["syntax_rules"]) >= 4
     assert len(validation_error["valid_examples"]) >= 3
@@ -448,7 +443,7 @@ def test_invalid_query_includes_syntax_help():
 def test_missing_credentials():
     """
     Test error handling for missing API credentials.
-    
+
     Requirements:
     - REASON: Specific missing credential (API key, env var, config)
     - RESOLUTION: Setup steps with exact env var names or config commands
@@ -461,17 +456,17 @@ def test_missing_credentials():
         "Get key: https://www.lens.org/get-started. "
         "Verify: recon config --check-keys"
     )
-    
+
     # REASON: Specific missing variable
     assert "LENS_API_KEY" in error_message
     assert "not set" in error_message
-    
+
     # RESOLUTION: Setup steps with exact names
     assert "export LENS_API_KEY=" in error_message
     assert "recon config" in error_message
     assert "--lens-key" in error_message
     assert "--check-keys" in error_message
-    
+
     # No apologies
     assert "sorry" not in error_message.lower()
 
@@ -499,7 +494,7 @@ def test_missing_credentials_includes_setup():
             "USPTO_API_KEY: USPTO API (optional for higher rate limits)"
         ]
     }
-    
+
     assert credential_setup["missing_credential"]
     assert len(credential_setup["setup_methods"]) >= 3
     assert credential_setup["get_key"]["url"]
@@ -512,7 +507,7 @@ def test_missing_credentials_includes_setup():
 def test_no_results_error():
     """
     Test error handling for empty search results.
-    
+
     Requirements:
     - REASON: Why no results (query too specific, typos, no matches)
     - RESOLUTION: Debugging steps (broaden query, check spelling, verify filters)
@@ -527,18 +522,18 @@ def test_no_results_error():
         "3. Remove filters: recon search xyz123abc (no date/assignee restrictions). "
         "4. Broaden date range: --since 1990."
     )
-    
+
     # REASON: Possible causes listed
     assert "too specific" in error_message
     assert "typos" in error_message
     assert "no patents matching" in error_message
-    
+
     # RESOLUTION: Debug steps with commands
     assert "Debug steps:" in error_message
     assert "recon search" in error_message
     assert "--suggest" in error_message
     assert "--since" in error_message
-    
+
     # Voice: Not discouraging
     assert "sorry" not in error_message.lower()
     assert "unfortunately" not in error_message.lower()
@@ -566,7 +561,7 @@ def test_no_results_includes_debug_steps():
         ],
         "expected_behavior": "At least 1-100 results should be found for most patent queries"
     }
-    
+
     assert len(debug_guidance["possible_causes"]) >= 3
     assert len(debug_guidance["debug_commands"]) >= 4
     for cmd in debug_guidance["debug_commands"]:
@@ -582,17 +577,17 @@ def test_error_voice_consistency_audit():
     Comprehensive audit of error messages in the codebase.
     Scans actual error messages and verifies they meet Constitution Principle VIII:
     "Dry, Actionable Error Voice"
-    
+
     Requirements:
     - All error messages are terse and factual
     - All errors include exact reason
     - All errors include resolution steps
     - No conversational fluff (apologies, "try to", "unfortunately", etc.)
     """
-    
+
     # These are actual error messages found in the codebase
     # See: .specify/tasks/EVALUATION_TASKS.md Task 5.1 audit results
-    
+
     errors_from_codebase = [
         {
             "source": "cli/main.py",
@@ -627,34 +622,34 @@ def test_error_voice_consistency_audit():
             "resolution": "Concrete alternative (external viewer, upgrade terminal)"
         }
     ]
-    
+
     # Audit each error
     for error in errors_from_codebase:
         source = error["source"]
         message = error["message"]
-        
+
         # Check 1: Not a generic error
         if "Too generic" in str(error.get("issues", [])):
             # This error needs improvement
             assert False, f"{source}: {message} is too generic - needs specific reason"
-        
+
         # Check 2: If voice_check exists and says ✓, verify no bad words
         if error.get("voice_check") and "✓" in error.get("voice_check", ""):
             voice_bad_words = ["sorry", "unfortunately", "try to", "please try"]
             for word in voice_bad_words:
                 assert word not in message.lower(), f"{source}: Found '{word}' in error message"
-    
+
     # Meta-assertion: Error messages should follow these patterns
     good_error_patterns = [
         "ERR: {specific_reason}. Action: {resolution}.",
         "ERR: {source} failed: {reason}. {resolution_command}",
         "Error: {entity} {problem}. {setup_steps}"
     ]
-    
+
     # All errors in codebase should match one of these patterns or better
     for error in errors_from_codebase:
         msg = error["message"]
-        has_pattern = any(
+        _ = any(
             ("{specific" in pattern and ":" in msg) or
             ("ERR:" in msg and ("Action:" in msg or "Reason:" in msg or "--" in msg))
             for pattern in good_error_patterns
@@ -665,13 +660,13 @@ def test_error_voice_consistency_audit():
 def test_error_message_requirements_matrix():
     """
     Define and verify the requirements matrix for error messages.
-    
+
     Constitutional Requirement (Principle VIII):
     "Dry, Actionable Error Voice"
-    "Error messages must be terse, factual, and strictly actionable. 
+    "Error messages must be terse, factual, and strictly actionable.
     No apologies, no conversational fluff. Provide exact reason and resolution steps."
     """
-    
+
     error_requirements = {
         "network_timeout": {
             "reason": "✓ Specific timeout duration and endpoint",
@@ -755,7 +750,7 @@ def test_error_message_requirements_matrix():
             ]
         }
     }
-    
+
     # Verify all error types meet requirements
     for error_type, requirements in error_requirements.items():
         assert requirements["reason"].startswith("✓"), f"{error_type} missing reason requirement"
@@ -767,14 +762,14 @@ def test_error_message_requirements_matrix():
 def test_error_voice_prohibited_words():
     """
     Verify that error messages do NOT contain prohibited conversational markers.
-    
+
     Prohibited (per Constitution VIII):
     - Apologies: "sorry", "apologize", "regret"
     - Hedging: "unfortunately", "sadly", "seems", "appears to"
     - Softening: "please try", "try to", "might", "could"
     - Emotional: "frustrat", "annoy", "disappoint"
     """
-    
+
     prohibited_words = [
         "sorry",
         "apologize",
@@ -789,12 +784,12 @@ def test_error_voice_prohibited_words():
         "annoy",
         "disappoint"
     ]
-    
+
     # Acceptable error message
     good_error = "Rate limit exceeded: 100/hour. Wait until 2026-05-13 14:32. Then retry."
     for word in prohibited_words:
         assert word not in good_error.lower(), f"Good error contains prohibited word: {word}"
-    
+
     # Bad error messages (for validation that our check works)
     bad_errors = [
         "Sorry, rate limit exceeded",
@@ -803,13 +798,13 @@ def test_error_voice_prohibited_words():
         "Please try again later",
         "The query might be invalid"
     ]
-    
+
     bad_words_found = []
     for bad_error in bad_errors:
         for word in prohibited_words:
             if word in bad_error.lower():
                 bad_words_found.append((bad_error, word))
-    
+
     # Verify our check detected the bad words
     assert len(bad_words_found) > 0, "Check should have detected prohibited words"
 
@@ -821,13 +816,13 @@ def test_error_voice_prohibited_words():
 def test_error_message_actionability_components():
     """
     Verify that error messages include actionable components.
-    
+
     An error is ACTIONABLE if it includes:
     1. REASON: Exact cause (not generic "error occurred")
     2. CONTEXT: Relevant identifiers (API, file, query, etc.)
     3. RESOLUTION: Concrete next steps (commands, URLs, numbers)
     """
-    
+
     # Structure of an actionable error
     def is_actionable_error(error_obj):
         """Check if error message meets actionability requirements."""
@@ -835,26 +830,26 @@ def test_error_message_actionability_components():
         missing = [k for k in required_keys if not error_obj.get(k)]
         if missing:
             return False, f"Missing: {missing}"
-        
+
         # Check specificity of reason (not generic)
         reason = error_obj["reason"]
         generic_markers = ["error", "failed", "problem"]
         if reason.lower() in generic_markers:
             return False, "Reason is too generic"
-        
+
         # Check context includes identifiers
         context = error_obj["context"]
         if not any(char.isalnum() for char in context):
             return False, "Context lacks specific identifiers"
-        
+
         # Check resolution includes actionable items (verbs, commands, URLs, numbers)
         resolution = error_obj["resolution"]
         actionable_markers = ["run", "export", "recon", "https://", "set", "check", "verify"]
         if not any(marker in resolution.lower() for marker in actionable_markers):
             return False, "Resolution lacks actionable items"
-        
+
         return True, "OK"
-    
+
     # Test cases
     actionable_errors = [
         {
@@ -868,7 +863,7 @@ def test_error_message_actionability_components():
             "resolution": "rm ~/.recon/cache.db && recon search --force-refresh"
         }
     ]
-    
+
     for error in actionable_errors:
         is_actionable, msg = is_actionable_error(error)
         assert is_actionable, f"Error not actionable: {msg}. Error: {error}"
@@ -881,18 +876,18 @@ def test_error_message_actionability_components():
 def test_error_context_preservation():
     """
     Verify that errors preserve context through the call stack.
-    
+
     When exceptions are caught and re-raised or wrapped, they should preserve:
     - Original error message
     - Relevant context (identifiers, values)
     - Resolution guidance
     """
-    
+
     # Simulated error handling in layers
     def api_call():
         """Simulates a failed API call."""
         raise ValueError("Socket timeout after 30s")
-    
+
     def client_wrapper():
         """Client layer catching and contextualizing errors."""
         try:
@@ -903,7 +898,7 @@ def test_error_context_preservation():
                 f"Network timeout calling patents.google.com API: {str(e)}. "
                 f"Retry with exponential backoff. Check network connectivity and proxy settings."
             )
-    
+
     def application_layer():
         """Application layer catching and reporting errors."""
         try:
@@ -912,9 +907,9 @@ def test_error_context_preservation():
             # Final error message to user
             error_msg = str(e)
             return error_msg
-    
+
     final_error = application_layer()
-    
+
     # Verify context is preserved
     assert "patents.google.com" in final_error
     assert "Socket timeout after 30s" in final_error or "timeout" in final_error

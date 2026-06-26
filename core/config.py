@@ -1,13 +1,14 @@
+import base64
 import os
 import platform
 import tomllib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
-from dataclasses import dataclass
+
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-import base64
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 CONFIG_PATH = Path.home() / ".config" / "recon" / "config.toml"
 _CACHE_DIR = Path.home() / ".cache" / "recon"
@@ -118,9 +119,9 @@ def save_config(cfg: Config) -> None:
     """Save configuration to ~/.config/recon/config.toml."""
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     crypto = ConfigEncryption()
-    
+
     lines = []
-    
+
     if cfg.uspto_api_key:
         lines.append(f'uspto_api_key = "{crypto.encrypt(cfg.uspto_api_key)}"')
     if cfg.epo_consumer_key:
@@ -144,5 +145,5 @@ def save_config(cfg: Config) -> None:
 
     with open(CONFIG_PATH, "w") as f:
         f.write("\n".join(lines) + "\n")
-        
+
     os.chmod(CONFIG_PATH, 0o600)

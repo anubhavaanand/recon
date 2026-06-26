@@ -1,8 +1,9 @@
 import pytest
+
 from core.citations import (
-    _clean_patent_id,
-    CitationNode,
     CitationGraph,
+    CitationNode,
+    _clean_patent_id,
     _mock_backward,
     _mock_forward,
     fetch_citations,

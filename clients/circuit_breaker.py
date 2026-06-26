@@ -1,6 +1,6 @@
 import time
 from enum import Enum
-from typing import Callable, Optional
+from typing import Callable
 
 
 class CircuitState(Enum):
@@ -60,7 +60,7 @@ class CircuitBreaker:
                 return result
             except CircuitOpenError:
                 raise
-            except Exception as e:
+            except Exception:
                 self.record_failure()
                 raise
 

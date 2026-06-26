@@ -1,5 +1,7 @@
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+
 from core.models import PatentRecord
 
 SAMPLE_RECORD = PatentRecord(
@@ -23,7 +25,7 @@ class TestResultListWidget:
         assert item.position == 1
 
     def test_result_list_item_score(self):
-        from tui.widgets.result_list import ResultListItem, _mini_bar, _age_str
+        from tui.widgets.result_list import _age_str, _mini_bar
         bar = _mini_bar(80, width=6)
         assert "█" in bar
         assert len(bar) == 6
@@ -131,7 +133,7 @@ class TestImageTab:
         assert tab.is_loaded is False
 
     def test_terminal_protocol_detection(self):
-        from tui.widgets.image_tab import detect_terminal_protocol, TerminalProtocol
+        from tui.widgets.image_tab import TerminalProtocol, detect_terminal_protocol
         protocol = detect_terminal_protocol()
         assert protocol in TerminalProtocol
 

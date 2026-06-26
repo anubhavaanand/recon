@@ -1,6 +1,6 @@
-from typer.testing import CliRunner
 from types import SimpleNamespace
-import pytest
+
+from typer.testing import CliRunner
 
 from cli import main as cli_main
 

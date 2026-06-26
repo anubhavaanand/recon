@@ -1,5 +1,7 @@
 import asyncio
+
 import httpx
+
 
 async def test():
     query = "lithium battery"

@@ -1,6 +1,8 @@
 import asyncio
-from core.models import PatentRecord
+
 from core.enrichment import enrich_patent
+from core.models import PatentRecord
+
 
 async def test():
     rec = PatentRecord(id="EP23159626", title="lithium batteries", assignee="SK On Co., Ltd.", dates={}, abstract="Test", claims=[], image_urls=[], status="ACTIVE", family_id="")

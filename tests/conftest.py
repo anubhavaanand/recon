@@ -1,5 +1,6 @@
 import pytest
-from core.models import PatentRecord, CrossReference
+
+from core.models import CrossReference, PatentRecord
 
 
 @pytest.fixture

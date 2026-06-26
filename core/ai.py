@@ -5,13 +5,9 @@ Zero-AI default — no endpoint is called without explicit user consent/toggle.
 
 from __future__ import annotations
 
-import json
 import math
-import os
-from typing import Optional
 
 import httpx
-
 
 NVIDIA_NIM_BASE = "https://api.nvcf.nvidia.com/v2/nvcf"
 

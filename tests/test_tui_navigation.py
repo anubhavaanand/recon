@@ -1,7 +1,8 @@
 import pytest
-from tui.app import ReconApp
-from tui.screens import SearchScreen, ReaderModeScreen
+
 from core.models import PatentRecord
+from tui.app import ReconApp
+from tui.screens import ReaderModeScreen, SearchScreen
 
 
 @pytest.mark.asyncio
@@ -10,14 +11,14 @@ async def test_textual_list_navigation_speed():
     async with app.run_test() as pilot:
         # Simulate loading search results
         await pilot.press("enter")
-        
+
         # Test navigation update speed
         # Ideally, wait for next frame and ensure it's < 100ms
         import time
         start = time.perf_counter()
         await pilot.press("down")
         end = time.perf_counter()
-        
+
         duration_ms = (end - start) * 1000
         assert duration_ms < 100, f"Navigation took {duration_ms}ms, which is > 100ms"
 
@@ -92,7 +93,7 @@ def test_reader_mode_has_correct_bindings():
         family_id="FAMILY123"
     )
     screen = ReaderModeScreen(record)
-    
+
     # Check that proper bindings exist (no Back to Search, just Quit and scroll)
     assert ("q", "app.pop_screen", "Quit") in screen.BINDINGS
     assert ("j", "scroll_down", "Down") in screen.BINDINGS
@@ -113,7 +114,7 @@ def test_reader_mode_status_line_method():
         family_id="FAMILY123"
     )
     screen = ReaderModeScreen(record)
-    
+
     # _build_content includes id and abstract; title is in the header line
     content = screen._build_content()
     assert "US123456" in content

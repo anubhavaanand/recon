@@ -1,5 +1,7 @@
-import httpx
 import asyncio
+
+import httpx
+
 
 async def test():
     query = "lithium solid state battery"
@@ -7,7 +9,7 @@ async def test():
         # arXiv
         r = await client.get(f"http://export.arxiv.org/api/query?search_query=all:%22{query}%22&max_results=1")
         print("arXiv:", r.status_code)
-        
+
         # NIH
         r = await client.post("https://api.reporter.nih.gov/v2/projects/search", json={"criteria": {"advanced_text_search": {"operator": "and", "search_terms": [query]}}})
         print("NIH:", r.status_code)

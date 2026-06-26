@@ -1,6 +1,7 @@
+
 import pytest
-from pathlib import Path
-from core.config import Config, save_config, load_config
+
+from core.config import Config, load_config, save_config
 from core.search import search_all
 from storage.cache import CacheDatabase
 
@@ -27,8 +28,9 @@ async def test_search_all_with_mocked_clients(monkeypatch, tmp_path):
 
     monkeypatch.setattr(CacheDatabase, "__init__", patched_init)
 
-    from clients.base import BaseAsyncClient
     import httpx
+
+    from clients.base import BaseAsyncClient
 
     async def mock_get(self, url, params=None, headers=None, **kwargs):
         return httpx.Response(

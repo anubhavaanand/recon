@@ -2,9 +2,11 @@ import asyncio
 import base64
 import time
 from typing import List
+
 from clients.base import BaseAsyncClient
-from core.models import PatentRecord
 from core.config import load_config
+from core.models import PatentRecord
+
 
 class USPTOClient(BaseAsyncClient):
     def __init__(self):
@@ -16,7 +18,7 @@ class USPTOClient(BaseAsyncClient):
     async def validate_credentials(self) -> tuple[bool, str]:
         if not self.config.uspto_api_key:
             return False, "ERR: USPTO API key missing."
-        
+
         headers = {"X-API-KEY": self.config.uspto_api_key}
         params = {"query": "battery"} # minimal search to validate
         try:
@@ -40,19 +42,19 @@ class USPTOClient(BaseAsyncClient):
 
         headers = {"X-API-KEY": self.config.uspto_api_key}
         params = {"query": query}
-        
+
         try:
             # Rate limiting delay
             await asyncio.sleep(self.rate_limit_delay)
-            
+
             response = await self.get_with_backoff("/patent/applications/search", params=params, headers=headers)
             if response.status_code != 200:
                 print(f"ERR: Source [USPTO] failed with status {response.status_code}")
                 return []
-            
+
             data = response.json()
             docs = data.get("response", {}).get("docs", [])
-            
+
             records = []
             for doc in docs:
                 records.append(PatentRecord(
@@ -167,9 +169,9 @@ class EPOClient(BaseAsyncClient):
             "Accept": "application/json",
         }
         cql = f'txt="{query}"'
-        
+
         await asyncio.sleep(self.rate_limit_delay)
-        
+
         response = await self.get_with_backoff(
             "/rest-services/published-data/search/biblio",
             params={"q": cql},
@@ -322,7 +324,6 @@ class PatsnapClient(BaseAsyncClient):
         if not key:
             return False, "ERR: PatSnap API key missing. Set via 'recon config set --patsnap-key' or PATSNAP_API_KEY in .env."
 
-        import json
         payload = {
             "query_text": "TACD: battery",
             "limit": 1,
@@ -354,7 +355,6 @@ class PatsnapClient(BaseAsyncClient):
             print("ERR: Source [PatSnap] API key missing. Provide via 'recon config set --patsnap-key' or PATSNAP_API_KEY in .env.")
             return []
 
-        import json
         payload = {
             "query_text": f"TACD: {query}",
             "collapse_type": "DOCDB",

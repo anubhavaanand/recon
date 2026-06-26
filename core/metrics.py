@@ -1,12 +1,12 @@
-import logging
 import json
+import logging
 import os
 import time
 import uuid
-from dataclasses import dataclass, asdict
-from logging.handlers import RotatingFileHandler
-from typing import Optional, Dict, List
+from dataclasses import asdict, dataclass
 from enum import Enum
+from logging.handlers import RotatingFileHandler
+from typing import Dict, List, Optional
 
 SESSION_ID = uuid.uuid4().hex[:8]
 VERSION = "0.2.0"

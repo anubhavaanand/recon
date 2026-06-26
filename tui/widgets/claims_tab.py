@@ -1,7 +1,8 @@
+
 from rich.markup import escape
 from textual.widgets import Static
+
 from core.models import PatentRecord
-import asyncio
 
 
 class ClaimsTab(Static):

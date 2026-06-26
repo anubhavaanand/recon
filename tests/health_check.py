@@ -18,7 +18,6 @@ import sys
 import time
 from pathlib import Path
 
-
 PROJECT_PACKAGES = ["cli", "tui", "core", "clients", "storage"]
 CRITICAL_MODULES = [
     "core.models",
@@ -82,7 +81,6 @@ def run_tests() -> dict:
         capture_output=True, text=True, timeout=120,
     )
     stdout = result.stdout
-    stderr = result.stderr
     passed = failed = skipped = 0
     for line in stdout.splitlines():
         if "passed" in line and "failed" in line:

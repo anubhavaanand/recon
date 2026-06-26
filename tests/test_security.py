@@ -1,17 +1,17 @@
-import os
 import csv
 import io
-import pytest
-from pathlib import Path
-from core.config import Config, save_config, CONFIG_PATH
-from tui.widgets.image_tab import is_safe_url
+import os
+
 from cli.export import _safe_csv_field
+from core.config import CONFIG_PATH, Config, save_config
+from tui.widgets.image_tab import is_safe_url
+
 
 def test_config_file_permissions():
     """Verify that the config file is created with 600 permissions."""
     test_config = Config(lens_api_key="test_key_123")
     save_config(test_config)
-    
+
     assert CONFIG_PATH.exists()
     mode = os.stat(CONFIG_PATH).st_mode
     # 0o600 means -rw-------
@@ -48,9 +48,9 @@ def test_csv_safe_field_allows_normal_values():
 
 def test_csv_export_no_injection(tmp_path):
     """Verify the full CSV export pipeline sanitizes dangerous fields."""
-    from core.models import PatentRecord
     from cli.export import _export_csv
-    
+    from core.models import PatentRecord
+
     malicious_record = PatentRecord(
         id="=CMD|'/C calc'!A0",
         title="@SUM(1+1)",
@@ -62,10 +62,10 @@ def test_csv_export_no_injection(tmp_path):
         status="active",
         family_id="FAM-1"
     )
-    
+
     out_file = tmp_path / "test.csv"
     _export_csv([malicious_record], str(out_file))
-    
+
     content = out_file.read_text()
     # Formula-triggering characters should not appear at the start of any cell
     for row in csv.reader(io.StringIO(content)):

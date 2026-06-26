@@ -1,23 +1,21 @@
-from textual.screen import Screen
+from rich.markup import escape
+from textual import work
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Input, ListView, Static
-from textual import work
 from textual.events import Resize
 from textual.reactive import reactive
+from textual.screen import Screen
+from textual.widgets import Input, ListView, Static
 
-
-from rich.markup import escape
-
-from tui.widgets.result_list import ResultList, ResultListItem
-from tui.widgets.info_tab import InfoTab
-from tui.widgets.claims_tab import ClaimsTab
-from tui.widgets.image_tab import ImageTab, detect_terminal_protocol, TerminalProtocol
-from tui.widgets.citation_tree import CitationTree
-from tui.widgets.command_palette import CommandPalette
-from core.search import search_all, ALL_SOURCES, SOURCE_REGISTRY
 from core.intelligence import SynthesisEngine
+from core.search import ALL_SOURCES, SOURCE_REGISTRY, search_all
 from storage.cache import CacheDatabase
+from tui.widgets.citation_tree import CitationTree
+from tui.widgets.claims_tab import ClaimsTab
+from tui.widgets.command_palette import CommandPalette
+from tui.widgets.image_tab import ImageTab, TerminalProtocol, detect_terminal_protocol
+from tui.widgets.info_tab import InfoTab
+from tui.widgets.result_list import ResultList, ResultListItem
 
 
 # ══════════════════════════════════════════════
@@ -46,7 +44,7 @@ class TerminalDetectionScreen(Screen):
             "✅ Supported" if protocol != TerminalProtocol.FALLBACK
             else "❌ Not supported"
         )
-        
+
         def mark(opt):
             return "●" if self._selected == opt else " "
 
@@ -171,7 +169,7 @@ class FamilyTreeScreen(Screen):
     def _build_tree(self) -> str:
         if not self.record:
             return "No patent selected."
-        
+
         # Simulate family members based on family_id
         fid = self.record.family_id or "F-UNKNOWN"
         lines = [
@@ -179,7 +177,7 @@ class FamilyTreeScreen(Screen):
             "│",
             f"├── {escape(self.record.id)} (Root - {escape(self.record.assignee)})",
         ]
-        
+
         # Add mock family members
         mock_members = [
             ("CN2023001", "Active"),
@@ -190,7 +188,7 @@ class FamilyTreeScreen(Screen):
         for i, (mid, status) in enumerate(mock_members):
             pfx = "└──" if i == len(mock_members) - 1 else "├──"
             lines.append(f"{pfx} {escape(mid)} [{status}]")
-            
+
         return "\n".join(lines)
 
 
@@ -381,11 +379,11 @@ class DetailScreen(Screen):
         if not self.record:
             return "No patent selected."
         r = self.record
-        from tui.widgets.info_tab import _render_score_bar, _render_status_pill, _render_signal_dots
-        from core.scoring import calculate_signal_score
-        from core.arbitrage import calculate_arbitrage_status, render_arbitrage_table
-
         import textwrap
+
+        from core.arbitrage import calculate_arbitrage_status, render_arbitrage_table
+        from core.scoring import calculate_signal_score
+        from tui.widgets.info_tab import _render_score_bar, _render_signal_dots, _render_status_pill
         score = calculate_signal_score(r.cross_references)
         status_pill = _render_status_pill(r.status)
         score_bar   = _render_score_bar(score)
@@ -436,8 +434,9 @@ class DetailScreen(Screen):
 
     def action_open_external(self) -> None:
         if self.record.image_urls:
-            from tui.widgets.image_tab import is_safe_url
             import subprocess
+
+            from tui.widgets.image_tab import is_safe_url
             url = self.record.image_urls[0]
             if is_safe_url(url):
                 subprocess.Popen(["xdg-open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -496,6 +495,7 @@ class DetailScreen(Screen):
         if not self.record:
             return
         self._original_abstract = self.record.abstract
+        from core.translation import translate_text
         translated = await translate_text(self.record.abstract)
         if translated != self._original_abstract and not translated.startswith("ERR:"):
             self.record.abstract = translated
@@ -846,7 +846,7 @@ class SearchScreen(Screen):
             f"RECON  ─────────────  Searching: {escape(query)}..."
         )
         sources = list(self._active_sources) if self._active_sources and len(self._active_sources) < len(ALL_SOURCES) else None
-        
+
         # Fire off the worker so the UI remains completely responsive
         self._perform_search(query, sources)
         self.query_one(ResultList).focus()
@@ -865,7 +865,7 @@ class SearchScreen(Screen):
                 seen = {r.id for r in sem_results}
                 rest = [r for r in self._results if r.id not in seen]
                 self._results = sem_results + rest[:30]
-        
+
         result_list = self.query_one(ResultList)
         result_list.clear()
 
@@ -877,9 +877,9 @@ class SearchScreen(Screen):
         if self._active_sources and len(self._active_sources) < len(ALL_SOURCES):
             active_names = [SOURCE_REGISTRY[s][0] for s in sorted(self._active_sources)]
             src_info = f"  │  sources: {','.join(active_names)}"
-            
+
         semantic_info = "  │  [Semantic]" if self._semantic_enabled else ""
-            
+
         if count == 0:
             self.query_one("#status_top", Static).update(
                 "ERR: No patents found. Try: 'battery' or 'solid state'"
@@ -926,7 +926,7 @@ class SearchScreen(Screen):
         try:
             await enrich_patent(record)
             self.query_one(InfoTab).update_record(record)
-            
+
             # Refresh the score in the list view
             result_list = self.query_one(ResultList)
             for child in result_list.children:
@@ -1236,7 +1236,7 @@ class SearchScreen(Screen):
     def _apply_sort(self) -> None:
         if not self._results:
             return
-            
+
         if self._sort_mode == "date":
             self._results.sort(key=lambda r: r.dates.get("filed", "[?]"), reverse=True)
         elif self._sort_mode == "assignee":
@@ -1247,12 +1247,12 @@ class SearchScreen(Screen):
         else: # relevance or custom
             from core.scoring import calculate_signal_score
             self._results.sort(key=lambda r: calculate_signal_score(r.cross_references), reverse=True)
-            
+
         result_list = self.query_one(ResultList)
         result_list.clear()
         for i, record in enumerate(self._results, 1):
             result_list.mount(ResultListItem(record, i))
-        
+
         self.query_one("#status_top", Static).update(
             str(self.query_one("#status_top", Static).content).replace(f"sort: {self._sort_mode}", "") + f"sort: {self._sort_mode}"
         )
@@ -1289,7 +1289,6 @@ class SearchScreen(Screen):
 
     def _prompt_nomic_consent(self) -> None:
         """Show inline consent prompt for nomic-embed-text download (no ModalScreen)."""
-        from core.config import load_config, save_config
 
         overlay = self.query_one("#nomic_consent_overlay", Static)
         overlay.remove_class("hidden")
@@ -1302,6 +1301,7 @@ class SearchScreen(Screen):
     def _do_pull_nomic(self, cfg) -> None:
         """Pull nomic model in background thread, then re-toggle semantic."""
         import asyncio
+
         from core.ai import AIProvider
         from core.config import save_config
 
@@ -1424,11 +1424,11 @@ class SearchScreen(Screen):
     def on_resize(self, event: Resize) -> None:
         """Adapt layout to terminal width."""
         width = event.size.width
-        
+
         # Ignore transient 0-width resize events during terminal initialization
         if width == 0:
             return
-            
+
         if width < 40:
             self.app.exit(
                 return_code=1,
