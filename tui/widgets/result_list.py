@@ -2,6 +2,7 @@ from datetime import date, datetime
 
 from rich.markup import escape
 from textual.app import ComposeResult
+from textual.reactive import reactive
 from textual.widgets import Label, ListItem, ListView
 
 from core.models import PatentRecord
@@ -27,7 +28,13 @@ def _mini_bar(score: int, width: int = 6) -> str:
     return "█" * filled + "░" * (width - filled)
 
 
+
+
 class ResultListItem(ListItem):
+    is_enriching = reactive(False)
+
+    def watch_is_enriching(self, value: bool) -> None:
+        self.refresh_score()
     def __init__(self, record: PatentRecord, position: int, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.record = record
@@ -42,7 +49,10 @@ class ResultListItem(ListItem):
         age = _age_str(self.record.dates.get("filed", ""))
         bar = _mini_bar(score)
         rec_id = escape(self.record.id[:20].ljust(20))
-        return f"{self.position:>2}  {rec_id}  {bar} {score:>3}%  {age}"
+        base = f"{self.position:>2}  {rec_id}  {bar} {score:>3}%  {age}"
+        if self.is_enriching:
+            base += " [spin]"
+        return base
 
     def refresh_score(self) -> None:
         try:

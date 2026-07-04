@@ -924,6 +924,11 @@ class SearchScreen(Screen):
         if record.cross_references:
             return
         try:
+            result_list = self.query_one(ResultList)
+            target_item = next((child for child in result_list.children if getattr(child, "record", None) is record), None)
+            if target_item:
+                target_item.is_enriching = True
+
             await enrich_patent(record)
             self.query_one(InfoTab).update_record(record)
 
@@ -940,6 +945,9 @@ class SearchScreen(Screen):
             import logging
             logging.getLogger("recon").error(f"Enrichment error: {e}", exc_info=True)
             self.notify(f"Enrichment error: {e}", severity="error")
+        finally:
+            if target_item:
+                target_item.is_enriching = False
 
     async def _lazy_load_claims(self, record) -> None:
         await self.query_one(ClaimsTab).load_claims(record)
