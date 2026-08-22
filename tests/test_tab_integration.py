@@ -179,6 +179,6 @@ async def test_render_tab_bar():
     from tui.screens import SearchScreen
     screen = SearchScreen()
     bar = screen._render_tab_bar()
-    assert "<Info>" in bar
-    assert " Claims " in bar
-    assert " Image " in bar
+    assert "▸ Info" in bar
+    assert "Claims" in bar
+    assert "Image" in bar

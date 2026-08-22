@@ -713,10 +713,10 @@ class SearchScreen(Screen):
         parts = []
         for key, label in tabs.items():
             if key == self._active_tab:
-                parts.append(f"<{label}>")
+                parts.append(f"[bold cyan]▸ {label}[/]")
             else:
-                parts.append(f" {label} ")
-        return "  ".join(parts) + "  ─────────────────────────────────"
+                parts.append(f"[dim]{label}[/]")
+        return "   ".join(parts)
 
     def _refresh_tab_bar(self) -> None:
         try:
@@ -1530,7 +1530,7 @@ class SearchScreen(Screen):
             "save_collection": self.action_save_collection,
             "reader_mode": self.action_reader_mode,
             "show_citation_graph": self.action_show_citation_graph,
-            "translate": lambda: self.call_after_refresh(self.action_translate()),
+            "translate": lambda: self.call_after_refresh(self.action_translate),
             "toggle_source_filter": self.action_toggle_source_filter,
             "change_theme": lambda: self._insert_slash_command("/theme "),
             "toggle_help": self.action_toggle_help,

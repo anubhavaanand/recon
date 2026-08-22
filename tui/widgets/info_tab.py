@@ -54,8 +54,26 @@ def _render_status_pill(status: str) -> str:
 class InfoTab(Static):
     """Info tab: title, metadata, score bar, signals, action hints."""
 
+    _EMPTY_STATE = (
+        "[bold $primary]R E C O N[/]\n"
+        "[dim]terminal-native patent intelligence[/]\n\n"
+        "[cyan]→[/] Type a query above and press [bold]Enter[/]\n"
+        "[cyan]→[/] [bold]↑↓[/] navigate  ·  [bold]h/l[/] switch tabs\n"
+        "[cyan]→[/] Press [bold]?[/] for all shortcuts\n\n"
+        "[dim]Sources: USPTO · EPO · WIPO · Google Patents · Lens · PatSnap[/]"
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.is_loaded = False
+
+    def on_mount(self) -> None:
+        if not self.is_loaded:
+            self.update(self._EMPTY_STATE)
+
     def update_record(self, record: PatentRecord | None) -> None:
         try:
+            self.is_loaded = True
             if not record:
                 self.update("No patent selected.\nUse ↑↓ to navigate results.")
                 return
