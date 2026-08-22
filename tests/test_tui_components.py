@@ -25,10 +25,13 @@ class TestResultListWidget:
         assert item.position == 1
 
     def test_result_list_item_score(self):
+        import re
+
         from tui.widgets.result_list import _age_str, _mini_bar
         bar = _mini_bar(80, width=6)
-        assert "█" in bar
-        assert len(bar) == 6
+        plain = re.sub(r"\[/?\[?[^]]*\]", "", bar)
+        assert "█" in plain
+        assert plain.count("█") == 4  # 80% of width 6
         age = _age_str("2020-01-01")
         assert age in ("5y", "6y", "7y", "[?]")
 
@@ -38,18 +41,26 @@ class TestResultListWidget:
         assert _age_str("invalid") == "[?]"
 
     def test_mini_bar_zero(self):
+        import re
+
         from tui.widgets.result_list import _mini_bar
-        assert _mini_bar(0, width=6) == "░" * 6
+        plain = re.sub(r"\[/?\[?[^]]*\]", "", _mini_bar(0, width=6))
+        assert plain == "░" * 6
 
     def test_mini_bar_full(self):
+        import re
+
         from tui.widgets.result_list import _mini_bar
-        assert _mini_bar(100, width=6) == "█" * 6
+        plain = re.sub(r"\[/?\[?[^]]*\]", "", _mini_bar(100, width=6))
+        assert plain == "█" * 6
 
     def test_mini_bar_half(self):
+        import re
+
         from tui.widgets.result_list import _mini_bar
-        bar = _mini_bar(50, width=6)
-        assert bar.count("█") == 3
-        assert bar.count("░") == 3
+        plain = re.sub(r"\[/?\[?[^]]*\]", "", _mini_bar(50, width=6))
+        assert plain.count("█") == 3
+        assert plain.count("░") == 3
 
 
 class TestInfoTab:
@@ -69,17 +80,23 @@ class TestInfoTab:
         tab.update_record(None)
 
     def test_info_tab_render_helpers(self):
+        import re
+
         from tui.widgets.info_tab import _render_score_bar, _render_signal_dots, _render_status_pill
+
+        def plain(s: str) -> str:
+            return re.sub(r"\[/?[^\]]*\]", "", s)
+
         bar = _render_score_bar(50)
         assert "50/100" in bar
         dots = _render_signal_dots([])
         assert "No signals" in dots
-        assert _render_status_pill("active") == "● ACTIVE"
-        assert _render_status_pill("● Active") == "● ACTIVE"
-        assert _render_status_pill("[?] ● Active") == "● ACTIVE"
-        assert _render_status_pill("[?]") == "[?]"
-        assert _render_status_pill("UNKNOWN") == "[?]"
-        assert _render_status_pill("") == "[?]"
+        assert plain(_render_status_pill("active")) == "● ACTIVE"
+        assert plain(_render_status_pill("● Active")) == "● ACTIVE"
+        assert plain(_render_status_pill("[?] ● Active")) == "● ACTIVE"
+        assert _render_status_pill("[?]") == "[dim][?][/]"
+        assert _render_status_pill("UNKNOWN") == "[dim][?][/]"
+        assert _render_status_pill("") == "[dim][?][/]"
 
 
 class TestClaimsTab:

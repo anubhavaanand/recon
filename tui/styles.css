@@ -1,15 +1,22 @@
 /* ══════════════════════════════════════════════
-   RECON — Tokyo Night Design System
-   Palette: bg:$bg, primary:$primary
+   RECON — Tokyo Night Pro Design System
+   Deep-layered dark theme, k9s × ncspot × Hermes
    ══════════════════════════════════════════════ */
 
-$bg: #1a1b26;
-$surface: #24283b;
-$text: #a9b1d6;
-$border: #414868;
+$bg: #16161e;
+$bg-deep: #101017;
+$surface: #1f2335;
+$surface-hi: #24283b;
+$text: #c0caf5;
+$muted: #565f89;
+$faint: #3b4261;
+$border: #2f334d;
 $primary: #7aa2f7;
-$error: #f7768e;
-$secondary: #bb9af7;
+$cyan: #7dcfff;
+$green: #9ece6a;
+$orange: #e0af68;
+$red: #f7768e;
+$purple: #bb9af7;
 
 /* ── Root ── */
 Screen {
@@ -22,21 +29,22 @@ ToastRack {
     layer: notification;
 }
 
-
-/* ── Status bar (top + bottom static) ── */
+/* ── Top status bar ── */
 #status_top {
     width: 100%;
     height: 1;
-    background: $surface;
+    background: $bg-deep;
     color: $primary;
-    padding: 0 1;
+    padding: 0 2;
+    border-bottom: solid $border;
 }
 #status_bottom {
     width: 100%;
     height: 1;
-    background: $surface;
-    color: #565f89;
-    padding: 0 1;
+    background: $bg-deep;
+    color: $muted;
+    padding: 0 2;
+    border-top: solid $border;
 }
 
 /* ── Search input ── */
@@ -52,7 +60,7 @@ ToastRack {
     border-bottom: solid $primary;
 }
 #search_input.input-error {
-    border: solid $error;
+    border-bottom: solid $red;
 }
 
 /* ── Two-column layout ── */
@@ -63,25 +71,28 @@ ToastRack {
 
 /* ── Results list ── */
 #result_list {
-    width: 32;
+    width: 34;
     height: 100%;
     border-right: solid $border;
-    background: $bg;
+    background: $bg-deep;
+    padding: 0 0 0 1;
 }
 ResultListItem {
-    height: 1;
-    padding: 0 1;
-    color: #565f89;
-    transition: background 120ms in_out_cubic;
+    height: auto;
+    padding: 0 1 0 0;
+    color: $muted;
+    transition: background 110ms in_out_cubic;
 }
 ResultListItem:hover {
     background: $surface;
     color: $text;
 }
 ResultListItem.--highlight {
-    background: #1f2937;
-    color: $primary;
-    transition: background 120ms out_cubic;
+    background: #293047;
+    transition: background 110ms out_cubic;
+}
+ResultListItem > #score_label {
+    width: 100%;
 }
 
 /* ── Preview / detail column ── */
@@ -91,13 +102,13 @@ ResultListItem.--highlight {
     background: $bg;
 }
 
-/* ── Tab bar (custom, rule-based) ── */
+/* ── Tab bar ── */
 #tab_bar {
     width: 100%;
     height: auto;
-    background: $surface;
-    color: #565f89;
-    padding: 0 1;
+    background: $bg-deep;
+    color: $muted;
+    padding: 0 2;
     border-bottom: solid $border;
     transition: color 150ms in_out_cubic;
 }
@@ -109,6 +120,7 @@ ResultListItem.--highlight {
     padding: 1 2;
     overflow-y: auto;
     color: $text;
+    background: $bg;
 }
 #claims_tab {
     width: 100%;
@@ -116,6 +128,7 @@ ResultListItem.--highlight {
     padding: 1 2;
     overflow-y: auto;
     color: $text;
+    background: $bg;
     display: none;
 }
 #image_tab {
@@ -124,6 +137,7 @@ ResultListItem.--highlight {
     padding: 1 2;
     overflow-y: auto;
     color: $text;
+    background: $bg;
     display: none;
 }
 .tab-active {
@@ -132,13 +146,14 @@ ResultListItem.--highlight {
 
 /* ── Help overlay ── */
 #help_overlay {
-    width: 48;
+    width: 52;
     height: auto;
-    background: $surface;
+    max-height: 30;
+    background: rgba(31, 35, 53, 0.96);
     color: $text;
-    border: round $border;
-    offset: 34 2;
-    padding: 0 1;
+    border: round $primary;
+    offset: 36 2;
+    padding: 1 2;
     layer: overlay;
     transition: opacity 140ms out_cubic;
 }
@@ -148,14 +163,15 @@ ResultListItem.--highlight {
 
 /* ── Export format overlay ── */
 #export_overlay {
-    width: 44;
+    width: 46;
     height: auto;
-    background: $surface;
+    background: rgba(31, 35, 53, 0.96);
     color: $text;
-    border: round $border;
+    border: round $cyan;
     offset: 38 5;
-    padding: 0 1;
+    padding: 1 2;
     layer: overlay;
+    transition: opacity 140ms out_cubic;
 }
 #export_overlay.hidden {
     display: none;
@@ -163,29 +179,47 @@ ResultListItem.--highlight {
 
 /* ── Source filter overlay ── */
 #source_filter_overlay {
-    width: 48;
+    width: 50;
     height: auto;
-    background: $surface;
+    background: rgba(31, 35, 53, 0.96);
     color: $text;
-    border: round $border;
-    offset: 34 2;
-    padding: 0 1;
+    border: round $purple;
+    offset: 36 2;
+    padding: 1 2;
     layer: overlay;
+    transition: opacity 140ms out_cubic;
 }
 #source_filter_overlay.hidden {
     display: none;
 }
 
+/* ── Sort overlay ── */
+#sort_overlay {
+    width: 44;
+    height: auto;
+    background: rgba(31, 35, 53, 0.96);
+    color: $text;
+    border: round $orange;
+    offset: 38 4;
+    padding: 1 2;
+    layer: overlay;
+    transition: opacity 140ms out_cubic;
+}
+#sort_overlay.hidden {
+    display: none;
+}
+
 /* ── Nomic consent overlay ── */
 #nomic_consent_overlay {
-    width: 56;
+    width: 58;
     height: auto;
-    background: $surface;
+    background: rgba(31, 35, 53, 0.96);
     color: $secondary;
     border: round $primary;
     offset: 30 4;
-    padding: 0 1;
+    padding: 1 2;
     layer: overlay;
+    transition: opacity 140ms out_cubic;
 }
 #nomic_consent_overlay.hidden {
     display: none;
@@ -193,20 +227,21 @@ ResultListItem.--highlight {
 
 /* ── Assignee Portfolio View overlay ── */
 #assignee_overlay {
-    width: 48;
+    width: 52;
     height: auto;
-    background: $surface;
+    background: rgba(31, 35, 53, 0.96);
     color: $text;
-    border: round $secondary;
-    offset: 34 2;
-    padding: 0 1;
+    border: round $green;
+    offset: 36 2;
+    padding: 1 2;
     layer: overlay;
+    transition: opacity 140ms out_cubic;
 }
 #assignee_overlay.hidden {
     display: none;
 }
 
-/* ── Citation tree (inline, toggled via hidden class) ── */
+/* ── Citation tree ── */
 #citation_tree {
     width: 100%;
     height: 1fr;
@@ -219,18 +254,19 @@ ResultListItem.--highlight {
     display: none;
 }
 
-/* ── Command palette (inline, / key) ── */
+/* ── Command palette ── */
 #command_palette {
-    width: 48;
+    width: 50;
     height: auto;
     max-height: 14;
-    background: $surface;
+    background: rgba(31, 35, 53, 0.97);
     color: $text;
     border: round $primary;
     offset: 0 3;
     layer: overlay;
     padding: 0 1;
     overflow-y: auto;
+    transition: opacity 120ms out_cubic;
 }
 #command_palette.hidden {
     display: none;
@@ -239,10 +275,10 @@ ResultListItem.--highlight {
 /* ── Terminal detection screen ── */
 TerminalDetectionScreen {
     align: center middle;
-    background: $bg;
+    background: $bg-deep;
 }
 #terminal_detection_content {
-    width: 64;
+    width: 66;
     height: auto;
     border: round $border;
     background: $surface;
@@ -259,7 +295,7 @@ TerminalDetectionScreen {
     margin-bottom: 1;
 }
 .td-dim {
-    color: #565f89;
+    color: $muted;
 }
 #td_detect {
     margin-bottom: 1;
@@ -280,8 +316,8 @@ TerminalDetectionScreen {
     width: 100%;
     height: 1;
     padding: 0 2;
-    background: $surface;
-    color: #565f89;
+    background: $bg-deep;
+    color: $muted;
 }
 .reader-content {
     padding: 1 4;
@@ -291,20 +327,20 @@ TerminalDetectionScreen {
     width: 100%;
     height: 1;
     padding: 0 2;
-    background: $surface;
-    color: #565f89;
+    background: $bg-deep;
+    color: $muted;
 }
 
-/* ── Toast Notifications (iOS Glass Design) ── */
+/* ── Toast Notifications ── */
 Toast {
-    background: rgba(36, 40, 59, 0.85);
+    background: rgba(36, 40, 59, 0.92);
     color: $primary;
     border: none;
     padding: 1 2;
     text-align: center;
 }
 
-/* Generated Themes */
+/* ── Generated Themes (/theme command) ── */
 
 Screen.theme-arctic-frost {
     background: #d4e4f7;

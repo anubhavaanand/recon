@@ -663,6 +663,10 @@ class SearchScreen(Screen):
             self._spinner_timer.stop()
             self._spinner_timer = None
 
+    def on_unmount(self) -> None:
+        # Prevent timer leak when screen is popped
+        self._stop_search_spinner()
+
     # ── Overlay fade-in (Hermes-style subtle motion) ───────────────
     def _reveal_overlay(self, widget: Static) -> None:
         """Un-hide an overlay and fade it in smoothly."""
@@ -704,8 +708,10 @@ class SearchScreen(Screen):
         yield Static("", id="assignee_overlay", classes="hidden")
         # Bottom status bar
         yield Static(
-            "↑↓ nav  Enter:detail  /:cmds  s:save  e:export  a:assignee  w:sort  x:semantic  ?:help  q:quit",
-            id="status_bottom"
+            "[cyan]↑↓[/] nav  [cyan]⏎[/] detail  [cyan]/[/] cmds  [cyan]s[/] save  "
+            "[cyan]e[/] export  [cyan]a[/] assignee  [cyan]w[/] sort  [cyan]x[/] semantic  "
+            "[cyan]?[/] help  [cyan]q[/] quit",
+            id="status_bottom", markup=True
         )
 
     def _render_tab_bar(self) -> str:
