@@ -35,47 +35,44 @@ class TerminalDetectionScreen(Screen):
         self._selected = "external"
 
     def compose(self) -> ComposeResult:
-        yield Static(self._build_content(), id="terminal_detection_content")
+        with Vertical(id="terminal_detection_content"):
+            yield Static("[bold $primary]RECON[/]", classes="td-title")
+            yield Static("Terminal Detection", classes="td-heading")
+            yield Static(self._detect_line(), id="td_detect")
+            yield Static("")
+            yield Static("Choose how patent figures are displayed:", classes="td-dim")
+            yield Static(self._option_line("external", "1", "External viewer", "recommended — opens in Preview/feh via o"), id="td_opt_external")
+            yield Static(self._option_line("switch",   "2", "Switch terminal", "Kitty, iTerm2, WezTerm, or Ghostty"), id="td_opt_switch")
+            yield Static(self._option_line("none",     "3", "Continue without images", "text-only mode, figure captions only"), id="td_opt_none")
+            yield Static("")
+            yield Static("[dim]Enter confirm  ·  q quit[/dim]", classes="td-dim")
 
-    def _build_content(self) -> str:
+    def _detect_line(self) -> str:
         protocol = detect_terminal_protocol()
         term = protocol.value
-        supported = (
-            "✅ Supported" if protocol != TerminalProtocol.FALLBACK
-            else "❌ Not supported"
-        )
+        if protocol != TerminalProtocol.FALLBACK:
+            return f"Terminal: [green]{term}[/]  │  inline images: [green]supported[/]"
+        return f"Terminal: [yellow]{term}[/]  │  inline images: [red]not supported[/]"
 
-        def mark(opt):
-            return "●" if self._selected == opt else " "
-
-        content = (
-            f"┌─ RECON ─────────────────────────────────────────────┐\n"
-            f"│                                                       │\n"
-            f"│  Terminal Detection                                   │\n"
-            f"│                                                       │\n"
-            f"│  Your terminal: {term:<37}│\n"
-            f"│  Inline images: {supported:<37}│\n"
-            f"│                                                       │\n"
-            f"│  Options (Press 1, 2, or 3 to select):                │\n"
-            f"│                                                       │\n"
-            f"│  [1][{mark('external')}] Use external viewer (recommended)            │\n"
-            f"│         Press o to open figure in Preview/feh         │\n"
-            f"│                                                       │\n"
-            f"│  [2][{mark('switch')}] Switch to supported terminal                  │\n"
-            f"│         Kitty, iTerm2, WezTerm, or Ghostty            │\n"
-            f"│                                                       │\n"
-            f"│  [3][{mark('none')}] Continue without images                       │\n"
-            f"│         Text-only mode, figure captions only          │\n"
-            f"│                                                       │\n"
-            f"│  [Enter] Confirm  [q] Quit                            │\n"
-            f"│                                                       │\n"
-            f"└───────────────────────────────────────────────────────┘"
-        )
-        return content
+    def _option_line(self, key: str, num: str, label: str, hint: str) -> str:
+        marker = "[cyan]●[/]" if self._selected == key else "[dim]○[/]"
+        weight = "bold" if self._selected == key else "dim"
+        return f"{marker} [{num}]  [{weight}]{label}[/]  —  [dim]{hint}[/]"
 
     def action_select_option(self, option: str) -> None:
         self._selected = option
-        self.query_one("#terminal_detection_content", Static).update(self._build_content())
+        self.query_one("#td_detect", Static).update(self._detect_line())
+        for i, opt in enumerate(("external", "switch", "none"), start=1):
+            try:
+                w = self.query_one(f"#td_opt_{opt}", Static)
+            except Exception:
+                continue
+            label, hint = {
+                "external": ("External viewer", "recommended — opens in Preview/feh via o"),
+                "switch":   ("Switch terminal", "Kitty, iTerm2, WezTerm, or Ghostty"),
+                "none":     ("Continue without images", "text-only mode, figure captions only"),
+            }[opt]
+            w.update(self._option_line(opt, str(i), label, hint))
 
     def action_confirm(self) -> None:
         from core.config import load_config, save_config
@@ -370,7 +367,7 @@ class DetailScreen(Screen):
         """Reactively toggle the citation tree visibility."""
         tree = self.query_one("#citation_tree", CitationTree)
         if showing:
-            tree.remove_class("hidden")
+            self._reveal_overlay(tree)
         else:
             tree.add_class("hidden")
         self.query_one("#detail_status", Static).update(self._status_line())
@@ -637,10 +634,49 @@ class SearchScreen(Screen):
         self._sort_mode = "relevance"
         self._semantic_enabled = False
         self._awaiting_nomic_consent = False
+        self._spinner_timer = None
+        self._spinner_frame = 0
+        self._spinner_query = ""
+
+    # ── Hermes-style animated search status ────────────────────────
+    _SPIN_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+    def _start_search_spinner(self, query: str) -> None:
+        self._spinner_query = query
+        self._spinner_frame = 0
+        if self._spinner_timer is None:
+            self._spinner_timer = self.set_interval(0.08, self._tick_search_spinner)
+        self._tick_search_spinner()
+
+    def _tick_search_spinner(self) -> None:
+        frame = self._SPIN_FRAMES[self._spinner_frame % len(self._SPIN_FRAMES)]
+        self._spinner_frame += 1
+        try:
+            self.query_one("#status_top", Static).update(
+                f"[cyan]{frame}[/cyan] Searching: {escape(self._spinner_query)}…"
+            )
+        except Exception:
+            pass
+
+    def _stop_search_spinner(self) -> None:
+        if self._spinner_timer is not None:
+            self._spinner_timer.stop()
+            self._spinner_timer = None
+
+    # ── Overlay fade-in (Hermes-style subtle motion) ───────────────
+    def _reveal_overlay(self, widget: Static) -> None:
+        """Un-hide an overlay and fade it in smoothly."""
+        widget.remove_class("hidden")
+        widget.styles.opacity = 0.0
+        widget.styles.animate("opacity", 1.0, duration=0.14)
+
+    def _conceal_overlay(self, widget: Static) -> None:
+        widget.add_class("hidden")
+        widget.styles.opacity = 1.0
 
     def compose(self) -> ComposeResult:
         # Top status bar
-        yield Static("RECON  ─────────────────────────────────────────", id="status_top")
+        yield Static("RECON", id="status_top")
         # Search input
         yield Input(placeholder='Search patents... ("sulfide electrolyte solid state battery")', id="search_input")
         # Command palette (hidden by default, shown when typing /)
@@ -791,7 +827,7 @@ class SearchScreen(Screen):
         palette = self.query_one("#command_palette", CommandPalette)
         if value.startswith("/") and " " not in value:
             palette.is_active = True
-            palette.remove_class("hidden")
+            self._reveal_overlay(palette)
             palette.filter(value)
         else:
             palette.is_active = False
@@ -842,9 +878,7 @@ class SearchScreen(Screen):
             search_input.remove_class("input-error")
             self._input_error = False
 
-        self.query_one("#status_top", Static).update(
-            f"RECON  ─────────────  Searching: {escape(query)}..."
-        )
+        self._start_search_spinner(query)
         sources = list(self._active_sources) if self._active_sources and len(self._active_sources) < len(ALL_SOURCES) else None
 
         # Fire off the worker so the UI remains completely responsive
@@ -856,7 +890,14 @@ class SearchScreen(Screen):
         """Worker task to perform the search without blocking the UI event handler."""
         import asyncio
         await asyncio.sleep(0.01) # Yield to event loop to guarantee the "Searching..." text renders
-        self._results = await search_all(query, sources=sources)
+        try:
+            self._results = await search_all(query, sources=sources)
+        except Exception:
+            self._stop_search_spinner()
+            self.query_one("#status_top", Static).update(
+                f"ERR: Search failed for '{escape(query)}'. Check connection or retry."
+            )
+            return
 
         if self._semantic_enabled and self._results:
             from core.search import semantic_search
@@ -880,13 +921,14 @@ class SearchScreen(Screen):
 
         semantic_info = "  │  [Semantic]" if self._semantic_enabled else ""
 
+        self._stop_search_spinner()
         if count == 0:
             self.query_one("#status_top", Static).update(
                 "ERR: No patents found. Try: 'battery' or 'solid state'"
             )
         else:
             self.query_one("#status_top", Static).update(
-                f"RECON  ──  \"{escape(query)}\"  │  {count} results{src_info}{semantic_info}  │  sort: {self._sort_mode}"
+                f"RECON  │  [bold]{escape(query)}[/]  │  {count} results{src_info}{semantic_info}  │  sort: {self._sort_mode}"
             )
 
         if self._results:
@@ -1000,7 +1042,7 @@ class SearchScreen(Screen):
         if self._show_help:
             overlay.add_class("hidden")
         else:
-            overlay.remove_class("hidden")
+            self._reveal_overlay(overlay)
         self._show_help = not self._show_help
 
     # ── Independent claims toggle (PRD: i) ─────────────
@@ -1064,7 +1106,7 @@ class SearchScreen(Screen):
         self._export_selected = 0
         overlay = self.query_one("#export_overlay", Static)
         overlay.update(self._render_export_overlay())
-        overlay.remove_class("hidden")
+        self._reveal_overlay(overlay)
 
     def _hide_export_overlay(self) -> None:
         self._show_export = False
@@ -1142,7 +1184,7 @@ class SearchScreen(Screen):
         self._source_filter_selected = 0
         overlay = self.query_one("#source_filter_overlay", Static)
         overlay.update(self._render_source_filter())
-        overlay.remove_class("hidden")
+        self._reveal_overlay(overlay)
 
     def _hide_source_filter_overlay(self) -> None:
         self._show_source_filter = False
@@ -1202,7 +1244,7 @@ class SearchScreen(Screen):
         self._sort_selected = 0
         overlay = self.query_one("#sort_overlay", Static)
         overlay.update(self._render_sort_overlay())
-        overlay.remove_class("hidden")
+        self._reveal_overlay(overlay)
 
     def _hide_sort_overlay(self) -> None:
         self._show_sort = False
@@ -1291,7 +1333,7 @@ class SearchScreen(Screen):
         """Show inline consent prompt for nomic-embed-text download (no ModalScreen)."""
 
         overlay = self.query_one("#nomic_consent_overlay", Static)
-        overlay.remove_class("hidden")
+        self._reveal_overlay(overlay)
         overlay.update(
             "[?] Download nomic-embed-text (270MB) for local semantic search? [y/N]: "
         )
@@ -1416,7 +1458,7 @@ class SearchScreen(Screen):
             self._show_assignee_view = False
         else:
             overlay.update(self._build_assignee_view())
-            overlay.remove_class("hidden")
+            self._reveal_overlay(overlay)
             self._show_assignee_view = True
 
     # ── Responsive breakpoints ────────────────────────
@@ -1440,9 +1482,15 @@ class SearchScreen(Screen):
         tab_pane = self.query_one("#preview_column")
 
         if width < 80:
+            # Minimal: stacked; preview hidden (use reader mode for detail)
             result_pane.styles.width = "100%"
             tab_pane.styles.display = "none"
+        elif width < 120:
+            # Compact: even split per Frontend Spec §7.1
+            result_pane.styles.width = "50%"
+            tab_pane.styles.display = "block"
         else:
+            # Full: three-pane
             result_pane.styles.width = "40%"
             tab_pane.styles.display = "block"
 

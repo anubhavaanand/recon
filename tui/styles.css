@@ -72,6 +72,7 @@ ResultListItem {
     height: 1;
     padding: 0 1;
     color: #565f89;
+    transition: background 120ms in_out_cubic;
 }
 ResultListItem:hover {
     background: $surface;
@@ -80,6 +81,7 @@ ResultListItem:hover {
 ResultListItem.--highlight {
     background: #1f2937;
     color: $primary;
+    transition: background 120ms out_cubic;
 }
 
 /* ── Preview / detail column ── */
@@ -96,6 +98,7 @@ ResultListItem.--highlight {
     background: $surface;
     color: #565f89;
     padding: 0 1;
+    transition: color 150ms in_out_cubic;
 }
 
 /* ── Tab content panes ── */
@@ -136,6 +139,7 @@ ResultListItem.--highlight {
     offset: 34 2;
     padding: 0 1;
     layer: overlay;
+    transition: opacity 140ms out_cubic;
 }
 #help_overlay.hidden {
     display: none;
@@ -237,12 +241,30 @@ TerminalDetectionScreen {
     background: $bg;
 }
 #terminal_detection_content {
-    width: 60;
+    width: 64;
     height: auto;
     border: round $border;
     background: $surface;
-    padding: 1 2;
+    padding: 1 3;
     color: $text;
+}
+.td-title {
+    text-style: bold;
+    color: $primary;
+    margin-bottom: 1;
+}
+.td-heading {
+    text-style: bold;
+    margin-bottom: 1;
+}
+.td-dim {
+    color: #565f89;
+}
+#td_detect {
+    margin-bottom: 1;
+}
+#td_opt_external, #td_opt_switch, #td_opt_none {
+    margin: 0 0 1 2;
 }
 
 /* ── Reader/Detail/Citation screens ── */
