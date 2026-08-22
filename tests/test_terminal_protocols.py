@@ -9,6 +9,9 @@ def test_detect_kitty(monkeypatch):
 
 def test_detect_iterm2(monkeypatch):
     monkeypatch.setenv("TERM_PROGRAM", "iTerm.app")
+    monkeypatch.delenv("KITTY_WINDOW_ID", raising=False)
+    monkeypatch.delenv("MLTERM", raising=False)
+    monkeypatch.delenv("TERM", raising=False)
     assert detect_terminal_protocol() == TerminalProtocol.ITERM2
 
 def test_detect_fallback(monkeypatch):

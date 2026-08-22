@@ -169,12 +169,15 @@ async def test_wipo_search_returns_mock(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_lens_search_returns_mock():
-    """Lens now returns mock data directly."""
+async def test_lens_search_delegates_to_scraper(monkeypatch):
+    """Lens delegates to DDG scraper pipeline (no mock data)."""
+    async def mock_search_lens(query):
+        return [PatentRecord(id="US123", title="Mock Scraped", assignee="[?]", dates={}, abstract="[?]", claims=[], image_urls=[], status="", family_id="")]
+    monkeypatch.setattr("clients.scrapers.search_lens_patents", mock_search_lens)
     client = LensClient()
     results = await client.search("quantum computing")
-    assert len(results) > 0
-    assert "MOCK" in results[0].id
+    assert len(results) == 1
+    assert "US123" in results[0].id
 
 
 @pytest.mark.asyncio
@@ -189,11 +192,12 @@ async def test_google_patents_search_returns_mock(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_lens_validate_credentials_no_keys_needed():
+async def test_lens_validate_credentials_reports_fallback(monkeypatch):
     client = LensClient()
+    monkeypatch.setattr(client.config, "lens_api_key", None)
     ok, msg = await client.validate_credentials()
-    assert ok is True
-    assert "mock data" in msg
+    assert ok is False
+    assert "scraper fallback" in msg
 
 
 @pytest.mark.asyncio

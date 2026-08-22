@@ -92,10 +92,11 @@ def test_single_result():
 async def test_search_all_returns_list():
     from unittest.mock import patch
 
-    from core.search import search_all
-    with patch("core.search.search_all") as mock:
+    import core.search as cs
+
+    with patch.object(cs, "search_all") as mock:
         mock.return_value = [_make_record("1", "2023-01-01")]
-        result = await search_all("test")
+        result = await cs.search_all("test")
         assert len(result) > 0
 
 

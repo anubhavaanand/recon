@@ -390,6 +390,12 @@ class EPOScraper(BaseScraper):
             if not is_clean_url(href, "register.epo.org"):
                 continue
 
+            # Only accept real application detail / publication URLs.
+            # Help pages, FAQ, and landing pages leak chrome titles
+            # like "About this file - European Patent Register".
+            if ("application?number=" not in href) and ("/publication/" not in href):
+                continue
+
             title_raw = r.get("title", "")
             snippet = r.get("body", "")
 
@@ -409,7 +415,10 @@ class EPOScraper(BaseScraper):
                 continue
             seen_ids.add(pid)
 
-            title = title_raw.strip() if title_raw else "[?]"
+            title = title_raw.strip() if title_raw else ""
+            if _is_epo_chrome_title(title):
+                # Constitution VII: uncertainty flagged, never disguised.
+                title = "[?]"
             abstract = snippet.strip() if snippet else "[?]"
 
             records.append(PatentRecord(
@@ -449,6 +458,31 @@ class EPOScraper(BaseScraper):
 
 
 # ── Parsing helpers (module-level for testability) ────────────────────
+
+
+_EPO_CHROME_PATTERNS = [
+    "about this file",
+    "european patent register",
+    "register.epo.org",
+    "espacenet",
+    "help",
+    "frequently asked questions",
+    "legal notices",
+    "privacy policy",
+    "cookie",
+]
+
+
+def _is_epo_chrome_title(title: str) -> bool:
+    """Detect EPO site-chrome/nav titles that are not patent titles.
+
+    Constitution VII: such strings must be surfaced as [?], never shown
+    as if they were invention titles.
+    """
+    if not title:
+        return True
+    lowered = title.lower().strip()
+    return any(p in lowered for p in _EPO_CHROME_PATTERNS)
 
 
 def parse_google_patent_html(html: str) -> dict | None:
@@ -577,7 +611,7 @@ def _parse_epo_detail_to_record(html: str, patent_id: str) -> PatentRecord | Non
     title_el = soup.select_one("h1, .page-title")
     if title_el:
         t = title_el.get_text(separator=" ", strip=True)
-        if t:
+        if t and not _is_epo_chrome_title(t):
             title = t
 
     assignee = "[?]"

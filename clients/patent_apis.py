@@ -261,35 +261,30 @@ class EPOClient(BaseAsyncClient):
         ]
 
 class LensClient(BaseAsyncClient):
-    """Lens.org client returning mock data (no free API available)."""
+    """Lens.org client using DuckDuckGo discovery + snippet parsing.
+
+    The official api.lens.org Scholar/Patent API requires an access token;
+    without one we fall back to the LensScraper pipeline. No mock data:
+    empty results are surfaced honestly (Constitution VII).
+    """
 
     def __init__(self):
         super().__init__(base_url="https://www.lens.org", timeout=30.0)
         self.config = load_config()
 
     async def validate_credentials(self) -> tuple[bool, str]:
-        return True, "Lens client (mock data)."
+        if self.config.lens_api_key:
+            return True, "Lens API key set."
+        return False, "No Lens key; using DDG scraper fallback."
 
     async def search(self, query: str) -> List[PatentRecord]:
-        print(f"INFO: Source [Lens] using mock data for '{query}'.")
-        return [
-            PatentRecord(
-                id=f"LN-MOCK-{query[:4].upper()}",
-                title=f"Lens.org Result for {query}",
-                assignee="Lens Assignee Ltd.",
-                dates={"filed": "2023-09-01"},
-                abstract=f"A Lens.org patent related to {query}.",
-                claims=[],
-                image_urls=[],
-                status="active",
-                family_id="F-LENS-1"
-            ),
-        ]
+        from clients.scrapers import search_lens_patents
+        return await search_lens_patents(query)
 
     async def fetch_citations(self, patent_id: str) -> dict:
-        """Lens citation fetching is not available via scraper.
+        """Lens citation fetching requires an API key.
 
-        Returns empty results since Lens.org API requires a paid key.
+        Returns empty results since Lens.org citations are behind auth.
         Citation graph will show None found.
         """
         return {"forward": [], "backward": []}
