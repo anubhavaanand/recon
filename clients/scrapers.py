@@ -740,8 +740,12 @@ def _parsed_to_record(parsed: dict) -> PatentRecord:
         parsed["dates"] = {"filed": "[?]"}
     if not parsed.get("status"):
         parsed["status"] = "UNKNOWN"
-    # Strip site chrome from scraped titles ("… - Google Patents")
+    # Strip site chrome from scraped titles ("… - Google Patents",
+    # and GP h1's leading "<ID> - " prefix)
     title = (parsed.get("title") or "[?]").strip()
+    pid = (parsed.get("id") or "").strip()
+    if pid and title.upper().startswith(pid.upper()):
+        title = title[len(pid):].lstrip(" -–—").strip()
     for suffix in (" - Google Patents", " – Google Patents", " - Google Search"):
         if title.endswith(suffix):
             title = title[: -len(suffix)].strip()
@@ -780,3 +784,52 @@ async def search_lens_patents(query: str) -> List[PatentRecord]:
 async def search_epo_patents(query: str) -> List[PatentRecord]:
     """Search EPO Register via DuckDuckGo snippet data."""
     return await EPOScraper().search(query)
+
+
+# ── Universal enrichment via Google Patents detail pages ─────────────
+
+_GP_ENRICH_SEM = asyncio.Semaphore(3)
+
+
+def _needs_enrichment(rec: PatentRecord) -> bool:
+    return (
+        rec.title in ("[?]", "")
+        or rec.dates.get("filed", "[?]") == "[?]"
+    )
+
+
+async def enrich_via_google(record: PatentRecord) -> PatentRecord:
+    """Fill missing fields from the patent's Google Patents page."""
+    if not _needs_enrichment(record) or not record.id:
+        return record
+    try:
+        scraper = GooglePatentsScraper()
+        async with _GP_ENRICH_SEM:
+            await asyncio.sleep(0.2)
+            html = await scraper.fetch_html(
+                f"https://patents.google.com/patent/{record.id}/en", timeout=12
+            )
+        if not html:
+            return record
+        parsed = parse_google_patent_html(html)
+        if not parsed:
+            return record
+        if parsed.get("title", "[?]") not in ("[?]", ""):
+            record.title = parsed["title"]
+        if parsed.get("assignee", "[?]") not in ("[?]", ""):
+            record.assignee = parsed["assignee"]
+        filed = parsed.get("dates", {}).get("filed", "[?]")
+        if filed != "[?]":
+            record.dates = {**record.dates, "filed": filed}
+        if parsed.get("abstract", "[?]") not in ("[?]", ""):
+            record.abstract = parsed["abstract"]
+        claims = parsed.get("claims") or []
+        if claims and (not record.claims or set(record.claims) <= {"[?]", ""}):
+            record.claims = claims
+    except Exception:
+        pass
+    return record
+
+
+async def enrich_records_via_google(records: List[PatentRecord]) -> List[PatentRecord]:
+    return list(await asyncio.gather(*[enrich_via_google(r) for r in records]))

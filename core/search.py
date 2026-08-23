@@ -156,6 +156,15 @@ async def search_all(query: str, sources: Optional[List[str]] = None) -> List[Pa
 
     merged = sort_and_merge_results(all_records)
 
+    # Universal enrichment: fill [?] fields from Google Patents detail
+    # pages (keyless, hosts US/EP/WO/CN/JP). Skips already-rich records.
+    if merged:
+        try:
+            from clients.scrapers import enrich_records_via_google
+            merged = await enrich_records_via_google(merged)
+        except Exception:
+            pass
+
     if errors == len(clients):
         stale = _get_stale_cache(db, query)
         if stale:
