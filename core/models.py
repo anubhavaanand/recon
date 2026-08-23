@@ -94,3 +94,27 @@ class PatentRecord:
                 for cr in data["cross_references"]
             ]
         return cls(**data)
+
+
+def normalize_date(raw) -> str:
+    """Coerce common date shapes to ISO YYYY-MM-DD; else '[?]'."""
+    import re as _re
+    from datetime import datetime as _dt
+
+    if not raw or str(raw).strip() in ("[?]", "UNKNOWN", "None"):
+        return "[?]"
+    s = str(raw).strip()
+    m = _re.match(r"^(\d{4})-(\d{2})-(\d{2})", s)
+    if m:
+        try:
+            _dt.strptime(m.group(0), "%Y-%m-%d")
+            return m.group(0)
+        except ValueError:
+            return "[?]"
+    for fmt in ("%Y%m%d", "%d.%m.%Y", "%m/%d/%Y", "%B %d, %Y", "%Y-%m"):
+        try:
+            return _dt.strptime(s[:14].strip(), fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    y = _re.match(r"^(19|20)\d{2}", s)
+    return f"{s[:4]}-[?]-[?]" if y else "[?]"

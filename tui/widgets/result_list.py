@@ -66,8 +66,11 @@ class ResultListItem(ListItem):
     def _generate_label_text(self) -> str:
         from core.scoring import calculate_signal_score
 
+        from core.models import normalize_date
         score = calculate_signal_score(self.record.cross_references)
-        age = _age_str(self.record.dates.get("filed", ""))
+        filed_iso = normalize_date(self.record.dates.get("filed", ""))
+        year = filed_iso[:4] if filed_iso != "[?]" else "[?]"
+        age = _age_str(filed_iso) if filed_iso != "[?]" else ""
         rec_id = escape(self.record.id[:18])
         title = escape(self.record.title)
         if len(self.record.title) > 30:
@@ -76,7 +79,7 @@ class ResultListItem(ListItem):
 
         line1 = (
             f"[dim]{self.position:>02}[/] [bold #7aa2f7]{rec_id:<18}[/] "
-            f"{_mini_bar(score)} [dim]{age:>3}[/]"
+            f"{_mini_bar(score)} [dim]{(year + (" · " + age if age else "")):>9}[/]"
         )
         line2 = f"   {badge} [dim]│[/] {title}"
         return f"{line1}\n{line2}"

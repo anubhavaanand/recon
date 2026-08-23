@@ -27,7 +27,7 @@ from bs4 import BeautifulSoup
 
 from clients.base_scraper import _DDG_SEMAPHORE, BaseScraper
 from clients.circuit_breaker import CircuitBreaker, CircuitOpenError
-from core.models import PatentRecord
+from core.models import PatentRecord, normalize_date
 from core.search import sanitize_query
 
 logger = logging.getLogger("recon")
@@ -358,7 +358,7 @@ class LensScraper(BaseScraper):
                 id=final_id,
                 title=title_clean,
                 assignee=assignee,
-                dates={"filed": filed},
+                dates={"filed": normalize_date(filed)},
                 abstract=abstract,
                 claims=["[?]"],
                 image_urls=["[?]"],
@@ -743,8 +743,11 @@ async def _fetch_patents_from_urls(
 
 def _parsed_to_record(parsed: dict) -> PatentRecord:
     """Convert parsed dict to PatentRecord."""
+    from core.models import normalize_date
     if not parsed.get("dates"):
         parsed["dates"] = {"filed": "[?]"}
+    else:
+        parsed["dates"] = {k: normalize_date(v) for k, v in parsed["dates"].items()}
     if not parsed.get("status"):
         parsed["status"] = "UNKNOWN"
     # Strip site chrome from scraped titles ("… - Google Patents",
