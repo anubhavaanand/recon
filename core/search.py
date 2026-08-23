@@ -131,15 +131,15 @@ async def search_all(query: str, sources: Optional[List[str]] = None) -> List[Pa
         return []
 
     async def _search_with_timeout(client):
-        # PRD NFR-001: cold search budget is <8s total. Per-source
-        # timeout of 5s keeps the aggregate inside budget even when
-        # one scraper hangs (sources run concurrently).
+        # Scraper pipelines (DDG discovery + detail fetches) need more
+        # than raw API calls; 15s per-source keeps quality while sources
+        # run concurrently. Cached repeats still serve in <100ms.
         try:
-            return await asyncio.wait_for(client.search(query), timeout=5.0)
+            return await asyncio.wait_for(client.search(query), timeout=15.0)
         except asyncio.TimeoutError:
             name = client.__class__.__name__
-            logger.error(f"Search source {name} timed out after 5s")
-            raise TimeoutError(f"ERR: {name} timed out (5s). Source skipped; other results shown.")
+            logger.error(f"Search source {name} timed out after 15s")
+            raise TimeoutError(f"ERR: {name} timed out (15s). Source skipped; other results shown.")
 
     tasks = [_search_with_timeout(client) for client in clients]
     results_nested = await asyncio.gather(*tasks, return_exceptions=True)

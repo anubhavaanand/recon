@@ -146,7 +146,7 @@ class WIPOScraper(BaseScraper):
 
         if patent_urls:
             page_records = await _fetch_patents_from_urls(
-                patent_urls, parse_wipo_patent_html, timeout=6.0
+                patent_urls, parse_wipo_patent_html, timeout=12.0
             )
             if page_records:
                 return page_records
@@ -162,6 +162,8 @@ class WIPOScraper(BaseScraper):
 
             title_raw = r.get("title", "")
             snippet = r.get("body", "")
+            if _is_domain_chrome_title(title_raw):
+                continue
 
             pid = None
             m = re.search(r"/WO([2-9]\d{3,}/\d+)", href.replace("-", ""))
@@ -193,7 +195,7 @@ class WIPOScraper(BaseScraper):
             parsed_assignee = "[?]"
             parsed_dates: dict[str, str] = {"filed": "[?]"}
             try:
-                html = await self.fetch_html(href, timeout=6.0)
+                html = await self.fetch_html(href, timeout=12.0)
                 if html:
                     parsed = parse_wipo_patent_html(html)
                     if parsed:
@@ -305,6 +307,8 @@ class LensScraper(BaseScraper):
 
             title_raw = r.get("title", "")
             snippet = r.get("body", "")
+            if _is_domain_chrome_title(title_raw):
+                continue
 
             pid = None
             m = re.search(r"/lens/patent/([\w-]+)", href)
@@ -398,6 +402,8 @@ class EPOScraper(BaseScraper):
 
             title_raw = r.get("title", "")
             snippet = r.get("body", "")
+            if _is_domain_chrome_title(title_raw):
+                continue
 
             pid = None
             m = re.search(r"(EP\d{7,})", href)
@@ -458,6 +464,21 @@ class EPOScraper(BaseScraper):
 
 
 # ── Parsing helpers (module-level for testability) ────────────────────
+
+
+
+_DOMAIN_CHROME_TITLES = {
+    "www.lens.org", "lens.org", "register.epo.org", "patents.google.com",
+    "google.com", "patentscope.wipo.int", "www.wipo.int",
+}
+
+
+def _is_domain_chrome_title(title: str) -> bool:
+    """DDG sometimes returns the bare domain as the result title."""
+    if not title:
+        return True
+    t = title.strip().lower()
+    return t in _DOMAIN_CHROME_TITLES
 
 
 _EPO_CHROME_PATTERNS = [
@@ -679,7 +700,7 @@ async def _ddg_search(query: str, max_results: int = 5) -> list:
 
 
 async def _fetch_patents_from_urls(
-    urls: list[str], parser_fn, timeout: float = 8.0, breaker: CircuitBreaker | None = None
+    urls: list[str], parser_fn, timeout: float = 12.0, breaker: CircuitBreaker | None = None
 ) -> list[PatentRecord]:
     """Fetch patent pages concurrently and parse them."""
     scraper = GooglePatentsScraper()
@@ -719,6 +740,12 @@ def _parsed_to_record(parsed: dict) -> PatentRecord:
         parsed["dates"] = {"filed": "[?]"}
     if not parsed.get("status"):
         parsed["status"] = "UNKNOWN"
+    # Strip site chrome from scraped titles ("… - Google Patents")
+    title = (parsed.get("title") or "[?]").strip()
+    for suffix in (" - Google Patents", " – Google Patents", " - Google Search"):
+        if title.endswith(suffix):
+            title = title[: -len(suffix)].strip()
+    parsed["title"] = title or "[?]"
     return PatentRecord(
         id=parsed["id"],
         title=parsed["title"],
