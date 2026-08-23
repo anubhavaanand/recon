@@ -640,21 +640,34 @@ class SearchScreen(Screen):
 
     # ── Hermes-style animated search status ────────────────────────
     _SPIN_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+    _SPIN_DELAY = 0.2  # tui-design §5: no spinner flash on fast/cache ops
 
     def _start_search_spinner(self, query: str) -> None:
+        import time
+
         self._spinner_query = query
         self._spinner_frame = 0
+        self._spinner_started_at = time.monotonic()
         if self._spinner_timer is None:
             self._spinner_timer = self.set_interval(0.08, self._tick_search_spinner)
         self._tick_search_spinner()
 
     def _tick_search_spinner(self) -> None:
+        import time
+
         frame = self._SPIN_FRAMES[self._spinner_frame % len(self._SPIN_FRAMES)]
         self._spinner_frame += 1
+        elapsed = time.monotonic() - getattr(self, "_spinner_started_at", 0.0)
         try:
-            self.query_one("#status_top", Static).update(
-                f"[cyan]{frame}[/cyan] Searching: {escape(self._spinner_query)}…"
-            )
+            if elapsed < self._SPIN_DELAY:
+                # Grace period: plain text, no motion (avoids flash)
+                self.query_one("#status_top", Static).update(
+                    f"Searching: {escape(self._spinner_query)}…"
+                )
+            else:
+                self.query_one("#status_top", Static).update(
+                    f"[cyan]{frame}[/cyan] Searching: {escape(self._spinner_query)}…"
+                )
         except Exception:
             pass
 
@@ -730,10 +743,27 @@ class SearchScreen(Screen):
         except Exception:
             pass
 
+    _FOOTER_CONTEXTS = {
+        "info": "[cyan]↑↓[/] nav  [cyan]⏎[/] detail  [cyan]s[/] save  [cyan]r[/] read  [cyan]c[/] citations  [cyan]e[/] export  [cyan]?[/] help  [cyan]q[/] quit",
+        "claims": "[cyan]↑↓[/] nav  [cyan]i[/] independent-only  [cyan]h/l[/] tabs  [cyan]s[/] save  [cyan]?[/] help  [cyan]q[/] quit",
+        "image": "[cyan]n[/] next  [cyan]p[/] prev  [cyan]1-9[/] jump  [cyan]o[/] open external  [cyan]d[/] download  [cyan]h/l[/] tabs  [cyan]?[/] help  [cyan]q[/] quit",
+    }
+
+    def _refresh_footer(self) -> None:
+        try:
+            footer = self.query_one("#status_bottom", Static)
+            if self._show_help or self._show_export or self._show_source_filter or self._show_sort:
+                footer.update("[cyan]↑↓[/] select  [cyan]⏎[/] confirm  [cyan]esc[/] close")
+                return
+            footer.update(self._FOOTER_CONTEXTS.get(self._active_tab, self._FOOTER_CONTEXTS["info"]))
+        except Exception:
+            pass
+
     def _set_active_tab(self, tab: str) -> None:
         """Show the active tab widget, hide others."""
         self._active_tab = tab
         self._refresh_tab_bar()
+        self._refresh_footer()
         for t in _TABS:
             try:
                 widget_id = f"#{t}_tab"

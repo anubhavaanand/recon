@@ -1,13 +1,43 @@
 from textual.app import App
+from textual.theme import Theme
 
 from tui.screens import SearchScreen
+
+
+RECON_THEME = Theme(
+    name="recon",
+    primary="#7aa2f7",
+    secondary="#bb9af7",
+    accent="#7dcfff",
+    foreground="#c0caf5",
+    background="#16161e",
+    surface="#1f2335",
+    panel="#24283b",
+    success="#9ece6a",
+    warning="#e0af68",
+    error="#f7768e",
+    dark=True,
+    variables={
+        "block-cursor-background": "#7aa2f7",
+        "input-selection-background": "#7aa2f7 35%",
+        "footer-key-foreground": "#7dcfff",
+    },
+)
 
 
 class ReconApp(App):
     TITLE = "RECON"
     CSS_PATH = "styles.css"
 
+    def get_default_screen(self):
+        # Engine-driven theming for every widget (footer keys,
+        # scrollbars, focus rings, inputs, selections).
+        return SearchScreen()
+
     def on_mount(self) -> None:
+        self.register_theme(RECON_THEME)
+        self.theme = "recon"
+
         from textual.scrollbar import ScrollBarRender
         # Replace fractional block elements with full solid blocks to prevent terminal rendering corruption
         ScrollBarRender.VERTICAL_BARS = ["█", "█", "█", "█", "█", "█", "█", " "]

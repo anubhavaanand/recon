@@ -36,7 +36,6 @@ ToastRack {
     background: $bg-deep;
     color: $primary;
     padding: 0 2;
-    border-bottom: solid $border;
 }
 #status_bottom {
     width: 100%;
@@ -44,7 +43,6 @@ ToastRack {
     background: $bg-deep;
     color: $muted;
     padding: 0 2;
-    border-top: solid $border;
 }
 
 /* ── Search input ── */
@@ -54,13 +52,12 @@ ToastRack {
     border: none;
     background: $surface;
     color: $text;
-    border-bottom: solid $border;
 }
 #search_input:focus {
-    border-bottom: solid $primary;
+    background: $surface-hi;
 }
 #search_input.input-error {
-    border-bottom: solid $red;
+    background: #2d202b;
 }
 
 /* ── Two-column layout ── */
@@ -81,7 +78,6 @@ ResultListItem {
     height: auto;
     padding: 0 1 0 0;
     color: $muted;
-    transition: background 110ms in_out_cubic;
 }
 ResultListItem:hover {
     background: $surface;
@@ -89,7 +85,6 @@ ResultListItem:hover {
 }
 ResultListItem.--highlight {
     background: #293047;
-    transition: background 110ms out_cubic;
 }
 ResultListItem > #score_label {
     width: 100%;
