@@ -20,7 +20,8 @@ import logging
 import random
 import re
 from typing import List
-from urllib.parse import urlparse
+from urllib.parse import quote_plus, urlparse
+from clients.base_scraper import ROTATING_USER_AGENTS
 
 from bs4 import BeautifulSoup
 
@@ -121,7 +122,13 @@ class WIPOScraper(BaseScraper):
         return _parsed_to_record(parsed)
 
     async def search(self, query: str) -> List[PatentRecord]:
-        """Search via DDG discovery, fall back to snippet data."""
+        """GP-native XHR search first; DDG discovery fallback."""
+        try:
+            recs = await asyncio.wait_for(search_google_xhr(query), timeout=14)
+            if recs:
+                return recs
+        except Exception:
+            pass
         query = sanitize_query(query)
         try:
             results = await _ddg_search(f"site:patentscope.wipo.int {query}", max_results=5)
@@ -833,3 +840,55 @@ async def enrich_via_google(record: PatentRecord) -> PatentRecord:
 
 async def enrich_records_via_google(records: List[PatentRecord]) -> List[PatentRecord]:
     return list(await asyncio.gather(*[enrich_via_google(r) for r in records]))
+
+
+# ── GP-native search (keyless Google Patents XHR API) ─────────────────
+
+
+async def search_google_xhr(query: str, max_results: int = 10) -> List[PatentRecord]:
+    """Query patents.google.com/xhr/query directly — no DDG middleman."""
+    import html as _html
+
+    from clients.base import BaseAsyncClient
+
+    q = quote_plus(query)
+    url = f"https://patents.google.com/xhr/query?url=q%3D{q}&exp="
+    client = BaseAsyncClient(base_url="https://patents.google.com")
+    session = await client.get_client()
+    resp = await asyncio.wait_for(
+        session.get(url, headers={"User-Agent": random.choice(ROTATING_USER_AGENTS)}),
+        timeout=12.0,
+    )
+    if resp.status_code != 200:
+        return []
+    data = resp.json()
+    clusters = (data.get("results") or {}).get("cluster") or []
+    records: list[PatentRecord] = []
+    seen: set[str] = set()
+    for cluster in clusters:
+        for item in cluster.get("result") or []:
+            raw_id = (item.get("id") or "").strip("/")          # patent/US11942620B2/en
+            pid = raw_id.split("/")[1] if "/" in raw_id else None
+            if not pid or pid in seen:
+                continue
+            seen.add(pid)
+            pat = item.get("patent") or {}
+            title = _html.unescape(re.sub(r"<[^>]+>", "", pat.get("title", ""))).strip() or "[?]"
+            snippet = _html.unescape(re.sub(r"<[^>]+>", "", pat.get("snippet", ""))).strip()
+            meta = pat.get("assignee") or ""
+            assignee = _html.unescape(re.sub(r"<[^>]+>", "", meta)).strip() if isinstance(meta, str) else "[?]"
+            filed = pat.get("filing_date", "[?]") or "[?]"
+            records.append(PatentRecord(
+                id=pid,
+                title=title,
+                assignee=assignee or "[?]",
+                dates={"filed": filed},
+                abstract=snippet or "[?]",
+                claims=["[?]"],
+                image_urls=[],
+                status="UNKNOWN",
+                family_id="UNKNOWN",
+            ))
+            if len(records) >= max_results:
+                return records
+    return records
