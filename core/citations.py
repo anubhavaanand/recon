@@ -50,14 +50,11 @@ async def fetch_citations(patent_id: str, assignee: str = "") -> CitationGraph:
     """Fetch citation graph for a patent.
 
     Scrapes backward citations from the Google Patents page, and attempts
-    forward citation discovery. Falls back gracefully.
+    forward citation discovery. Constitution II/VII: when scraping finds
+    nothing we return an EMPTY graph — never fabricated nodes.
     """
     backward = await _fetch_backward_citations(patent_id)
     forward = await _fetch_forward_citations(patent_id)
-
-    if not backward and not forward:
-        backward = _mock_backward(patent_id)
-        forward = _mock_forward(patent_id)
 
     return CitationGraph(
         patent_id=patent_id,
@@ -135,21 +132,5 @@ async def _fetch_forward_citations(patent_id: str) -> List[CitationNode]:
     return []
 
 
-def _mock_backward(patent_id: str) -> List[CitationNode]:
-    """Mock backward citations for demo/testing."""
-    return [
-        CitationNode(id="US10000001B2", title="Prior art battery technology", assignee="Samsung", date="2018-03-01"),
-        CitationNode(id="WO2020000001A1", title="Electrolyte compositions", assignee="Toyota", date="2020-01-15"),
-        CitationNode(id="EP35000001B1", title="Solid state cell architecture", assignee="BASF", date="2019-06-20"),
-        CitationNode(id="JP2018000001A", title="Ceramic separator method", assignee="Panasonic", date="2018-11-10"),
-        CitationNode(id="CN109000001A", title="Lithium anode protection", assignee="CATL", date="2019-04-05"),
-    ]
 
 
-def _mock_forward(patent_id: str) -> List[CitationNode]:
-    """Mock forward citations for demo/testing."""
-    return [
-        CitationNode(id="US20230000001A1", title="Advanced battery management", assignee="Tesla", date="2023-01-10"),
-        CitationNode(id="EP41000001A1", title="Next-gen solid electrolyte", assignee="QuantumScape", date="2022-08-15"),
-        CitationNode(id="WO2023000001A1", title="High energy density cell", assignee="LG Chem", date="2023-05-20"),
-    ]

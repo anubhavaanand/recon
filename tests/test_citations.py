@@ -4,8 +4,6 @@ from core.citations import (
     CitationGraph,
     CitationNode,
     _clean_patent_id,
-    _mock_backward,
-    _mock_forward,
     fetch_citations,
 )
 from tui.widgets.citation_tree import CitationTree, _format_node
@@ -56,20 +54,13 @@ class TestCitationGraph:
         assert graph.forward == []
 
 
-class TestMockData:
-    def test_mock_backward_returns_five_nodes(self):
-        nodes = _mock_backward("US123")
-        assert len(nodes) == 5
-        for n in nodes:
-            assert isinstance(n, CitationNode)
-            assert n.id
+class TestNoFabrication:
+    """Constitution II/VII: empty scrapes must yield empty graphs, never mocks."""
 
-    def test_mock_forward_returns_three_nodes(self):
-        nodes = _mock_forward("US123")
-        assert len(nodes) == 3
-        for n in nodes:
-            assert isinstance(n, CitationNode)
-            assert n.id
+    def test_no_mock_functions_exist(self):
+        import core.citations as c
+        assert not hasattr(c, "_mock_backward")
+        assert not hasattr(c, "_mock_forward")
 
 
 class TestFormatNode:
@@ -143,8 +134,8 @@ async def test_fetch_citations_returns_graph(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_fetch_citations_falls_back_to_mock(monkeypatch):
-    """When scraper returns empty, mock data should be used."""
+async def test_fetch_citations_empty_when_scrape_empty(monkeypatch):
+    """Constitution II/VII: empty scrape -> empty graph, never fabricated."""
     async def mock_backward(*args, **kwargs):
         return []
 
@@ -155,5 +146,5 @@ async def test_fetch_citations_falls_back_to_mock(monkeypatch):
     monkeypatch.setattr("core.citations._fetch_forward_citations", mock_forward)
 
     graph = await fetch_citations("US123", "Test Corp")
-    assert len(graph.backward) == 5  # mock
-    assert len(graph.forward) == 3  # mock
+    assert graph.backward == []
+    assert graph.forward == []

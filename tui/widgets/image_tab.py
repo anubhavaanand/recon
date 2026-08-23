@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import io
 import os
 import subprocess
 from enum import Enum
@@ -52,6 +54,70 @@ def is_safe_url(url: str) -> bool:
     if parsed.scheme != "https":
         return False
     return any(domain in parsed.netloc for domain in _ALLOWED_DOMAINS)
+
+
+# ── Kitty graphics protocol (FR-014 / G-004 inline images) ────────────
+
+
+def _kitty_cell_size() -> tuple[int, int]:
+    """Best-effort cell pixel size; sane defaults when unknown."""
+    return 10, 20
+
+
+def render_kitty_png(png_bytes: bytes, cols: int, rows: int) -> str | None:
+    """Encode a PNG for the Kitty graphics protocol.
+
+    Returns the full escape sequence string, or None if encoding fails.
+    Pure Python — no new dependencies beyond Pillow for scaling.
+    """
+    try:
+        from PIL import Image
+
+        img = Image.open(io.BytesIO(png_bytes))
+        cw, ch = _kitty_cell_size()
+        target_w = max(1, cols * cw)
+        target_h = max(1, rows * ch)
+        img.thumbnail((target_w, target_h), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        data = buf.getvalue()
+
+        b64 = base64.standard_b64encode(data).decode("ascii")
+        chunk_size = 4096
+        parts = []
+        n_chunks = (len(b64) + chunk_size - 1) // chunk_size
+        for i in range(0, len(b64), chunk_size):
+            seq = "\033_Gf=100,a=T"
+            if i == 0:
+                seq += f",s={img.width},h={img.height}"
+            if i + chunk_size < len(b64):
+                seq += ",m=1"
+            elif n_chunks > 1:
+                seq += ",m=0"
+            seq += ";" + b64[i : i + chunk_size] + "\033\\"
+            parts.append(seq)
+        return "".join(parts)
+    except Exception:
+        return None
+
+
+async def download_image_bytes(url: str, timeout: float = 8.0) -> bytes | None:
+    """Download image bytes from a validated trusted URL."""
+    if not is_safe_url(url):
+        return None
+    try:
+        from clients.base import BaseAsyncClient
+
+        client = BaseAsyncClient(base_url="")
+        session = await client.get_client()
+        resp = await asyncio.wait_for(
+            session.get(url, follow_redirects=True), timeout=timeout
+        )
+        if resp.status_code == 200:
+            return resp.content
+    except Exception:
+        pass
+    return None
 
 
 class ImageTab(Static):
