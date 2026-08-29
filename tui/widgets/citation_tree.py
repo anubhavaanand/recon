@@ -13,6 +13,7 @@ from core.citations import CitationGraph, CitationNode
 
 
 class CitationTree(Static):
+    BINDINGS = []
     """A static widget that renders the citation graph as an ASCII tree.
 
     The widget renders the tree inline. Navigation is handled by the

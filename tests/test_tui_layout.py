@@ -80,35 +80,36 @@ async def test_tab_switching_hl():
     """h/l keys switch preview tabs."""
     from tui.app import ReconApp
     from tui.screens import SearchScreen
-    async with ReconApp().run_test(size=(140, 40)) as pilot:
-        await pilot.app.switch_screen(SearchScreen())
-        await pilot.pause(1.0)
-        # Search first to get results
-        await pilot.click("#search_input")
-        for ch in "battery":
-            await pilot.press(ch)
-        await pilot.press("enter")
-        await pilot.pause(4.0)
+    with patch("tui.screens.search_all", new_callable=AsyncMock, return_value=MOCK_RECORDS):
+        async with ReconApp().run_test(size=(140, 40)) as pilot:
+            await pilot.app.switch_screen(SearchScreen())
+            await pilot.pause(1.0)
+            # Search first to get results
+            await pilot.click("#search_input")
+            for ch in "battery":
+                await pilot.press(ch)
+            await pilot.press("enter")
+            await pilot.pause(4.0)
 
-        # Blur the input so character keys bubble up to the screen bindings
-        pilot.app.screen.query_one("#search_input").blur()
-        await pilot.pause(3.0)
+            # Blur the input so character keys bubble up to the screen bindings
+            pilot.app.screen.query_one("#search_input").blur()
+            await pilot.pause(3.0)
 
-        screen = pilot.app.screen
-        screen.refresh()
-        assert screen._active_tab == "info"
-        await pilot.press("l")
-        await pilot.pause(4.0)
-        screen.refresh()
-        assert screen._active_tab == "claims"
-        await pilot.press("l")
-        await pilot.pause(4.0)
-        screen.refresh()
-        assert screen._active_tab == "image"
-        await pilot.press("h")
-        await pilot.pause(4.0)
-        screen.refresh()
-        assert screen._active_tab == "claims"
+            screen = pilot.app.screen
+            screen.refresh()
+            assert screen._active_tab == "info"
+            await pilot.press("l")
+            await pilot.pause(4.0)
+            screen.refresh()
+            assert screen._active_tab == "claims"
+            await pilot.press("l")
+            await pilot.pause(4.0)
+            screen.refresh()
+            assert screen._active_tab == "image"
+            await pilot.press("h")
+            await pilot.pause(4.0)
+            screen.refresh()
+            assert screen._active_tab == "claims"
 
 
 @pytest.mark.asyncio

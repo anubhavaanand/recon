@@ -6,6 +6,7 @@ from core.models import PatentRecord
 
 
 class ClaimsTab(Static):
+    BINDINGS = []
     """Claims tab: numbered claims with Independent/Dependent labels."""
 
     def __init__(self, *args, **kwargs):

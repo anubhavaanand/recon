@@ -1017,7 +1017,7 @@ class SearchScreen(Screen):
         except Exception as e:
             import logging
             logging.getLogger("recon").error(f"Enrichment error: {e}", exc_info=True)
-            self.notify(f"Enrichment error: {e}", severity="error")
+            self.notify(f"ERR: Enrichment failed: {e}", severity="error")
 
     async def _lazy_load_claims(self, record) -> None:
         await self.query_one(ClaimsTab).load_claims(record)
@@ -1027,11 +1027,11 @@ class SearchScreen(Screen):
 
     def _current_record(self):
         result_list = self.query_one(ResultList)
-        idx = result_list.index
-        if idx is not None and 0 <= idx < len(result_list.children):
-            item = result_list.children[idx]
-            if hasattr(item, "record"):
-                return item.record
+        item = result_list.highlighted_child
+        if item is None and result_list.index is not None and 0 <= result_list.index < len(result_list.children):
+            item = result_list.children[result_list.index]
+        if item and hasattr(item, "record"):
+            return item.record
         return None
 
     # ── Tab switching (PRD: h/l, ←/→) ─────────────────
@@ -1061,7 +1061,7 @@ class SearchScreen(Screen):
         if record:
             self.app.push_screen(DetailScreen(record))
         else:
-            self.notify("No patent selected.")
+            self.notify("ERR: No patent selected.", severity="error")
 
     # ── Quick open 1-9 ──────────────────────────────────
     def action_quick_open(self, n: str) -> None:
@@ -1110,7 +1110,7 @@ class SearchScreen(Screen):
             db.save_to_collection(record)
             self.notify(f"Saved {record.id} to collection.")
         else:
-            self.notify("No patent selected.")
+            self.notify("ERR: No patent selected.", severity="error")
 
     def action_reader_mode(self) -> None:
         record = self._current_record()
@@ -1157,7 +1157,7 @@ class SearchScreen(Screen):
             db = CacheDatabase()
             records = db.get_collection()
             if not records:
-                self.notify("Collection is empty. Nothing to export.")
+                self.notify("ERR: Collection is empty. Nothing to export.", severity="error")
                 return
             export_records(records, fmt, f"collection_export.{fmt}")
             self.notify(f"Exported {len(records)} patents to collection_export.{fmt}")
@@ -1194,7 +1194,7 @@ class SearchScreen(Screen):
         if record:
             self.notify(f"Download queued for {record.id}.")
         else:
-            self.notify("No patent selected.")
+            self.notify("ERR: No patent selected.", severity="error")
 
     # ── Source Filter Overlay ────────────────────────
     def _render_source_filter(self) -> str:
@@ -1347,7 +1347,7 @@ class SearchScreen(Screen):
 
         if not AIProvider.nomic_is_installed():
             if cfg.nomic_consent_given:
-                self.app.notify("Semantic Search unavailable: nomic-embed-text not found. Run 'ollama pull nomic-embed-text'", severity="error")
+                self.app.notify("ERR: Semantic search unavailable: nomic-embed-text not found.", severity="error")
                 return
             self._prompt_nomic_consent()
             return

@@ -3,16 +3,19 @@ import base64
 import io
 import os
 import subprocess
+import tempfile
 from enum import Enum
 from urllib.parse import urlparse
 
 from rich.markup import escape
+from textual import work
 from textual.widgets import Static
 
 from core.models import PatentRecord
 
 
 class TerminalProtocol(Enum):
+    BINDINGS = []
     KITTY   = "Kitty"
     ITERM2  = "iTerm2"
     SIXEL   = "Sixel"
@@ -121,6 +124,7 @@ async def download_image_bytes(url: str, timeout: float = 8.0) -> bytes | None:
 
 
 class ImageTab(Static):
+    BINDINGS = []
     """Image tab: inline rendering or external viewer with thumbnail strip."""
 
     def __init__(self, *args, **kwargs):
@@ -177,7 +181,8 @@ class ImageTab(Static):
         except Exception as e:
             self.update(f"ERR: Could not open external viewer: {escape(str(e))}")
 
-    def _render_current(self) -> None:
+    @work(exclusive=True)
+    async def _render_current(self) -> None:
         record = self.current_record
         if not record:
             self.update("No patent selected.")
@@ -214,7 +219,39 @@ class ImageTab(Static):
         if config.terminal_protocol == "none":
             body = "INFO: Figure rendering disabled (Text-only mode selected).\nAction: Press Enter on detection screen to change."
         elif protocol in (TerminalProtocol.KITTY, TerminalProtocol.ITERM2, TerminalProtocol.SIXEL):
-            body = f"[INLINE {protocol.value.upper()} RENDER]\nURL: {escape(url)}"
+            loading_msg = (
+                f"─── Figures ────────────────────────────────────\n"
+                f"FIGURE {idx + 1} OF {total}\n\n"
+                f"Downloading image...\nURL: {escape(url)}\n\n"
+                f"{thumb_strip}\n\n"
+                f"(n)ext  (p)rev  (o)pen external  (d)ownload figure"
+            )
+            self.update(loading_msg)
+
+            img_bytes = await download_image_bytes(url)
+            if img_bytes:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+                    tmp.write(img_bytes)
+                    tmp_name = tmp.name
+
+                try:
+                    cmd = ["viu", tmp_name]
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                        env=os.environ.copy()
+                    )
+                    stdout, stderr = await proc.communicate()
+                    ansi_out = stdout.decode("utf-8", errors="replace")
+                    body = ansi_out + f"\nURL: {escape(url)}"
+                except Exception as e:
+                    body = f"[ERR: viu command failed: {escape(str(e))}]\nURL: {escape(url)}"
+                finally:
+                    if os.path.exists(tmp_name):
+                        os.unlink(tmp_name)
+            else:
+                body = f"[ERR: Failed to download image]\nURL: {escape(url)}"
         else:
             body = (
                 f"ERR: Image rendering unsupported in current terminal.\n"

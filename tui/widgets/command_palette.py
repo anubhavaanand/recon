@@ -28,6 +28,7 @@ SLASH_COMMANDS = [
 
 
 class CommandPalette(Static):
+    BINDINGS = []
     """Inline command palette dropdown, toggled via hidden CSS class."""
 
     def __init__(self, *args, **kwargs):

@@ -3,6 +3,7 @@ from textual.widgets import Static
 
 
 class AlertBanner(Static):
+    BINDINGS = []
     alerts = reactive(list)
 
     def watch_alerts(self, alerts: list):

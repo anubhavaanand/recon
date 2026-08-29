@@ -55,6 +55,7 @@ def _source_badge(source_meta: str) -> str:
 
 
 class ResultListItem(ListItem):
+    BINDINGS = []
     def __init__(self, record: PatentRecord, position: int, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.record = record
@@ -104,4 +105,5 @@ class ResultListItem(ListItem):
 
 
 class ResultList(ListView):
+    BINDINGS = []
     pass

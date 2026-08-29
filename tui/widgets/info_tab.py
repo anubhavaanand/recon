@@ -76,6 +76,7 @@ def _rule(title: str = "", width: int = 46) -> str:
 
 
 class InfoTab(Static):
+    BINDINGS = []
     """Info tab: sectioned patent dossier with graded score and signals."""
 
     _EMPTY_STATE = (

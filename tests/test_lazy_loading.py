@@ -28,7 +28,9 @@ async def test_image_lazy_loading():
     assert not tab.is_loaded
 
     # Trigger load
-    await tab.load_image(record)
+    from unittest.mock import patch
+    with patch.object(ImageTab, "run_worker"):
+        await tab.load_image(record)
 
     # Assert loaded
     assert tab.is_loaded
