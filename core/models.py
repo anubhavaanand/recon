@@ -141,7 +141,8 @@ def estimate_expiration(dates: dict, patent_id: str = "") -> str:
     if patent_id and _re.match(r"^[A-Z]{2}D", patent_id.upper()):
         return "[?]"  # design patent: term runs from grant, not filing
     try:
-        from datetime import date as _date, timedelta as _timedelta
+        from datetime import date as _date
+        from datetime import timedelta as _timedelta
 
         y, m, d = (int(part) for part in filed.split("-"))
         base = _date(y, m, d)
