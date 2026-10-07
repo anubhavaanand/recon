@@ -74,6 +74,9 @@ async def test_epo_search_valid_keys_uses_api(monkeypatch):
                                             }]
                                         }
                                     },
+                                    "application-reference": {
+                                        "document-id": [{"date": {"$": "20220515"}}]
+                                    },
                                     "publication-reference": {
                                         "document-id": [{"date": {"$": "20230615"}}]
                                     }
@@ -93,6 +96,55 @@ async def test_epo_search_valid_keys_uses_api(monkeypatch):
     assert len(results) == 1
     assert results[0].id == "EP12345678"
     assert results[0].title == "Mock EPO API Patent"
+    assert results[0].dates.get("filed") == "2022-05-15"
+
+
+@pytest.mark.asyncio
+async def test_epo_search_uses_publication_date_fallback(monkeypatch):
+    """When application-reference is absent, fall back to publication-reference."""
+    monkeypatch.setattr("clients.patent_apis.load_config", lambda: Config(epo_consumer_key="KEY", epo_consumer_secret="SECRET"))
+
+    async def mock_token_post(self, url, data=None, headers=None):
+        return httpx.Response(200, json={"access_token": "test_token", "expires_in": 3600})
+
+    async def mock_ops_get(self, url, params=None, headers=None, max_retries=4):
+        return httpx.Response(200, json={
+            "ops:world-patent-data": {
+                "ops:biblio-search": {
+                    "ops:search-result": {
+                        "exchange-documents": [{
+                            "exchange-document": {
+                                "@country": "EP",
+                                "@doc-number": "12345678",
+                                "@family-id": "F001",
+                                "bibliographic-data": {
+                                    "invention-title": [{"@lang": "en", "$": "Mock EPO API Patent"}],
+                                    "abstract": [{"@lang": "en", "p": {"$": "Mock abstract from EPO API."}}],
+                                    "parties": {
+                                        "applicants": {
+                                            "applicant": [{
+                                                "applicant-name": {"name": {"$": "EPO Applicant GmbH"}}
+                                            }]
+                                        }
+                                    },
+                                    "publication-reference": {
+                                        "document-id": [{"date": {"$": "20230615"}}]
+                                    }
+                                }
+                            }
+                        }]
+                    }
+                }
+            }
+        })
+
+    monkeypatch.setattr(BaseAsyncClient, "get_with_backoff", mock_ops_get)
+    monkeypatch.setattr("httpx.AsyncClient.post", mock_token_post)
+
+    client = EPOClient()
+    results = await client.search("quantum computing")
+    assert len(results) == 1
+    assert results[0].dates.get("filed") == "2023-06-15"
 
 
 @pytest.mark.asyncio

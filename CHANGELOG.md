@@ -33,22 +33,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Placeholder for upcoming v0.3.0 features
+- Boolean query mode in TUI footer: displays active `ti:/ab:/assignee:` constraints while browsing
+- EPO `application-reference` parsing for accurate filing dates (falls back to `publication-reference`)
 
 ### Changed
-- Placeholder for upcoming v0.3.0 changes
-
-### Deprecated
-- Placeholder for upcoming v0.3.0 deprecations
-
-### Removed
-- Placeholder for upcoming v0.3.0 removals
+- EPO OPS API search now uses filing date from `application-reference` when available
+- Footer status bar shows `BOOL:` indicator when boolean query operators are active
 
 ### Fixed
-- Placeholder for upcoming v0.3.0 fixes
+- Fixed EPO filing date accuracy — was incorrectly using publication date
+- Fixed boolean query constraint visibility in TUI status bar
 
 ### Security
-- Placeholder for upcoming v0.3.0 security patches
+- None
+
+## [0.2.1] - 2026-09-28
+
+### Added
+- Design history document (`docs/DESIGN_HISTORY.md`) with original rectangular mockup, constitution, ADR log, and source-decision history
+- Expiration date extraction from Google Patents (`itemprop=expiration`) with deterministic `filed + 20 years (est.)` fallback
+- Family size from "Also Published As" table on Google Patents
+- Boolean query mode with field operators: `ti:` (title), `ab:` (abstract), `assignee:` (assignee); quoted phrases; implicit AND; unknown prefixes fall back to free text
+- `scripts/dev/` directory for manual smoke scripts (moved from repo root)
+
+### Changed
+- README architecture tree synced to reality (was missing 9 modules, corrected `config.json` → `config.toml`)
+- CI pipeline modernized: added `ruff` lint job, Python 3.14 to matrix, pinned `setup-uv@v10.2.0`
+- Ruff import-order findings resolved (11 auto-fixes)
+
+### Fixed
+- Google Patents status parsing (now matches `legalStatus` selector)
+- `is_enriching` row indicator ported onto redesigned TUI widgets (static `⟳ enriching` marker)
+
+### Removed
+- 10 loose `test_*.py` scratch scripts from repo root → `scripts/dev/`
+- `apply_fixes.py` and `chat_summary.md` from tracked files
+
+### Security
+- None
 
 ## [0.2.0] - 2026-05-16
 

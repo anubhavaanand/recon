@@ -222,12 +222,21 @@ class EPOClient(BaseAsyncClient):
                 parties = [parties]
             assignee = parties[0].get("applicant-name", {}).get("name", {}).get("$", "[?]") if parties else "[?]"
 
-            date_refs = biblio.get("publication-reference", {}).get("document-id", [])
-            if isinstance(date_refs, dict):
-                date_refs = [date_refs]
-            filed = date_refs[0].get("date", {}).get("$", "[?]") if date_refs else "[?]"
-            if filed != "[?]" and len(filed) == 8:
-                filed = f"{filed[:4]}-{filed[4:6]}-{filed[6:]}"
+            def _extract_document_date(refs):
+                if not refs:
+                    return "[?]"
+                raw = refs[0].get("date", {}).get("$", "[?]")
+                if raw != "[?]" and len(str(raw)) == 8:
+                    return f"{str(raw)[:4]}-{str(raw)[4:6]}-{str(raw)[6:]}"
+                return "[?]"
+
+            app_refs = biblio.get("application-reference", {}).get("document-id", [])
+            if isinstance(app_refs, dict):
+                app_refs = [app_refs]
+            pub_refs = biblio.get("publication-reference", {}).get("document-id", [])
+            if isinstance(pub_refs, dict):
+                pub_refs = [pub_refs]
+            filed = _extract_document_date(app_refs) if app_refs else _extract_document_date(pub_refs)
 
             records.append(PatentRecord(
                 id=pid,

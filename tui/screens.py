@@ -963,8 +963,15 @@ class SearchScreen(Screen):
                 "ERR: No patents found. Try: 'battery' or 'solid state'"
             )
         else:
+            # Parse boolean query for footer indicator
+            from core.query import parse_boolean_query
+            bq = parse_boolean_query(query)
+            bool_indicator = ""
+            if bq.is_boolean:
+                desc = bq.describe()
+                bool_indicator = f"  │  [yellow]BOOL:[/] {escape(desc)}"
             self.query_one("#status_top", Static).update(
-                f"RECON  │  [bold]{escape(query)}[/]  │  {count} results{src_info}{semantic_info}  │  sort: {self._sort_mode}"
+                f"RECON  │  [bold]{escape(query)}[/]  │  {count} results{src_info}{semantic_info}{bool_indicator}  │  sort: {self._sort_mode}"
             )
 
         if self._results:
