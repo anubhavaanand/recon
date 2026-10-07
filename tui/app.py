@@ -3,7 +3,6 @@ from textual.theme import Theme
 
 from tui.screens import SearchScreen
 
-
 RECON_THEME = Theme(
     name="recon",
     primary="#7aa2f7",

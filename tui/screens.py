@@ -998,15 +998,22 @@ class SearchScreen(Screen):
     @work(exclusive=True, group="enrichment")
     async def _enrich_current(self, record) -> None:
         from core.enrichment import enrich_patent
-        # Check if already has cross_references
-        if record.cross_references:
-            return
+
+        result_list = self.query_one(ResultList)
+        target = next(
+            (c for c in result_list.children if getattr(c, "record", None) is record),
+            None,
+        )
+        if target:
+            target.is_enriching = True
         try:
+            # Check if already has cross_references
+            if record.cross_references:
+                return
             await enrich_patent(record)
             self.query_one(InfoTab).update_record(record)
 
             # Refresh the score in the list view
-            result_list = self.query_one(ResultList)
             for child in result_list.children:
                 if getattr(child, "record", None) is record and hasattr(child, "refresh_score"):
                     child.refresh_score()
@@ -1018,6 +1025,9 @@ class SearchScreen(Screen):
             import logging
             logging.getLogger("recon").error(f"Enrichment error: {e}", exc_info=True)
             self.notify(f"ERR: Enrichment failed: {e}", severity="error")
+        finally:
+            if target:
+                target.is_enriching = False
 
     async def _lazy_load_claims(self, record) -> None:
         await self.query_one(ClaimsTab).load_claims(record)

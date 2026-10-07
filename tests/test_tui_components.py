@@ -138,8 +138,9 @@ class TestImageTab:
 
     @pytest.mark.asyncio
     async def test_image_tab_load(self):
-        from tui.widgets.image_tab import ImageTab
         from unittest.mock import patch
+
+        from tui.widgets.image_tab import ImageTab
         with patch.object(ImageTab, "run_worker"):
             tab = ImageTab()
             await tab.load_image(SAMPLE_RECORD)

@@ -2,11 +2,12 @@
 TUI layout tests using Textual's async pilot framework.
 PRD §10: TUI tests using Textual's async pilot framework.
 """
-import pytest
-from unittest.mock import patch, AsyncMock
-from textual.widgets import Input, Static
-from core.models import PatentRecord
+from unittest.mock import AsyncMock, patch
 
+import pytest
+from textual.widgets import Input, Static
+
+from core.models import PatentRecord
 
 MOCK_RECORDS = [
     PatentRecord(

@@ -21,11 +21,10 @@ import random
 import re
 from typing import List
 from urllib.parse import quote_plus, urlparse
-from clients.base_scraper import ROTATING_USER_AGENTS
 
 from bs4 import BeautifulSoup
 
-from clients.base_scraper import _DDG_SEMAPHORE, BaseScraper
+from clients.base_scraper import _DDG_SEMAPHORE, ROTATING_USER_AGENTS, BaseScraper
 from clients.circuit_breaker import CircuitBreaker, CircuitOpenError
 from core.models import PatentRecord, normalize_date
 from core.search import sanitize_query

@@ -2,10 +2,10 @@ from datetime import date, datetime
 
 from rich.markup import escape
 from textual.app import ComposeResult
+from textual.reactive import reactive
 from textual.widgets import Label, ListItem, ListView
 
 from core.models import PatentRecord
-
 
 # Source badge colors (Tokyo Night accents)
 _SOURCE_COLORS = {
@@ -56,18 +56,23 @@ def _source_badge(source_meta: str) -> str:
 
 class ResultListItem(ListItem):
     BINDINGS = []
+    # True while background enrichment (signals, dates) runs for this record.
+    is_enriching: reactive[bool] = reactive(False)
+
     def __init__(self, record: PatentRecord, position: int, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.record = record
         self.position = position
 
+    def watch_is_enriching(self, enriching: bool) -> None:
+        self.refresh_score()
+
     def compose(self) -> ComposeResult:
         yield Label(self._generate_label_text(), id="score_label", markup=True)
 
     def _generate_label_text(self) -> str:
-        from core.scoring import calculate_signal_score
-
         from core.models import normalize_date
+        from core.scoring import calculate_signal_score
         score = calculate_signal_score(self.record.cross_references)
         filed_iso = normalize_date(self.record.dates.get("filed", ""))
         year = filed_iso[:4] if filed_iso != "[?]" else "[?]"
@@ -82,7 +87,7 @@ class ResultListItem(ListItem):
             f"[dim]{self.position:>02}[/] [bold #7aa2f7]{rec_id:<18}[/] "
             f"{_mini_bar(score)} [dim]{(year + (" · " + age if age else "")):>9}[/]"
         )
-        line2 = f"   {badge} [dim]│[/] {title}"
+        line2 = f"   {badge} [dim]│[/] {title}{' [dim]⟳ enriching[/]' if self.is_enriching else ''}"
         return f"{line1}\n{line2}"
 
     def _infer_source(self) -> str:

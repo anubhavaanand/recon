@@ -60,11 +60,11 @@ def _render_status_pill(status: str) -> str:
     if s in ("ACTIVE", "GRANTED"):
         return f"[#9ece6a]●[/] [bold #9ece6a]{s}[/]"
     elif s == "EXPIRED":
-        return f"[dim]● EXPIRED[/] [dim]→ public domain[/]"
+        return "[dim]● EXPIRED[/] [dim]→ public domain[/]"
     elif s == "ABANDONED":
-        return f"[#f7768e]●[/] [#f7768e]ABANDONED[/] [dim]→ free to use[/]"
+        return "[#f7768e]●[/] [#f7768e]ABANDONED[/] [dim]→ free to use[/]"
     elif s == "PENDING":
-        return f"[#e0af68]○[/] [#e0af68]PENDING[/]"
+        return "[#e0af68]○[/] [#e0af68]PENDING[/]"
     return f"[dim]○ {s}[/]"
 
 
