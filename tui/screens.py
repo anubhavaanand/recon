@@ -1007,6 +1007,20 @@ class SearchScreen(Screen):
         if target:
             target.is_enriching = True
         try:
+            # Complete dates (expires, family_count) from the GP detail page —
+            # one lazy fetch when the cheap search path left them unknown.
+            if (
+                record.dates.get("expires", "[?]") == "[?]"
+                or record.dates.get("family_count", "[?]") == "[?]"
+            ):
+                try:
+                    from clients.scrapers import enrich_via_google
+
+                    await enrich_via_google(record, force=True)
+                    self.query_one(InfoTab).update_record(record)
+                except Exception:
+                    pass
+
             # Check if already has cross_references
             if record.cross_references:
                 return

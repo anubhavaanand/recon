@@ -99,11 +99,17 @@ async def search_all(query: str, sources: Optional[List[str]] = None) -> List[Pa
                  Defaults to all sources if None.
     """
     query = sanitize_query(query)
+    from core.query import apply_boolean_filter, parse_boolean_query, to_keyword_query
+
+    bq = parse_boolean_query(query)
+    # Boolean mode: field operators (ti:/ab:/assignee:) are stripped before
+    # fan-out; the raw query stays the cache key so modes never collide.
+    client_query = to_keyword_query(bq) if bq.is_boolean else query
 
     db = CacheDatabase()
     cached = db.get_cached_search(query)
     if cached:
-        return sort_and_merge_results(cached)
+        return sort_and_merge_results(apply_boolean_filter(cached, query))
 
     if sources is None:
         sources = ALL_SOURCES
@@ -115,7 +121,9 @@ async def search_all(query: str, sources: Optional[List[str]] = None) -> List[Pa
             logger.warning("Safe mode active. Serving stale cache.")
         else:
             logger.warning("Safe mode active. No cache available.")
-        return sort_and_merge_results(stale) if stale else []
+        if stale:
+            return sort_and_merge_results(apply_boolean_filter(stale, query))
+        return []
 
     clients = []
     for src in sources:
@@ -135,7 +143,7 @@ async def search_all(query: str, sources: Optional[List[str]] = None) -> List[Pa
         # than raw API calls; 15s per-source keeps quality while sources
         # run concurrently. Cached repeats still serve in <100ms.
         try:
-            return await asyncio.wait_for(client.search(query), timeout=15.0)
+            return await asyncio.wait_for(client.search(client_query), timeout=15.0)
         except asyncio.TimeoutError:
             name = client.__class__.__name__
             logger.error(f"Search source {name} timed out after 15s")
@@ -165,11 +173,16 @@ async def search_all(query: str, sources: Optional[List[str]] = None) -> List[Pa
         except Exception:
             pass
 
+    # Boolean mode narrows after enrichment so constraints match the
+    # completed titles/abstracts, not the raw snippets.
+    if bq.is_boolean:
+        merged = apply_boolean_filter(merged, query)
+
     if errors == len(clients):
         stale = _get_stale_cache(db, query)
         if stale:
             print("ERR: All sources failed. Serving cached results.")
-            return sort_and_merge_results(stale)
+            return sort_and_merge_results(apply_boolean_filter(stale, query))
 
     if merged:
         db.save_search_results(query, merged)

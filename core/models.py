@@ -118,3 +118,38 @@ def normalize_date(raw) -> str:
             continue
     y = _re.match(r"^(19|20)\d{2}", s)
     return f"{s[:4]}-[?]-[?]" if y else "[?]"
+
+
+def estimate_expiration(dates: dict, patent_id: str = "") -> str:
+    """Best-known expiration date, or '[?]'.
+
+    Preference order (constitution: transparent math, uncertainty flagged):
+    1. An explicit ``dates["expires"]`` harvested from a source (e.g. the
+       adjusted expiration on the Google Patents page) — returned as-is.
+    2. Computed estimate: filing date + 20 years (standard utility term in
+       US/EP/WO/CN/JP...), suffixed " (est.)". Design patents (e.g. USD…)
+       have a grant-based term instead, so they are not estimated.
+    """
+    explicit = dates.get("expires") if dates else None
+    if explicit and explicit != "[?]":
+        return str(explicit)
+    filed = (dates or {}).get("filed", "[?]")
+    if filed == "[?]" or not filed:
+        return "[?]"
+    import re as _re
+
+    if patent_id and _re.match(r"^[A-Z]{2}D", patent_id.upper()):
+        return "[?]"  # design patent: term runs from grant, not filing
+    try:
+        from datetime import date as _date
+        from datetime import timedelta as _timedelta
+
+        y, m, d = (int(part) for part in filed.split("-"))
+        base = _date(y, m, d)
+    except (ValueError, TypeError):
+        return "[?]"
+    try:
+        est = base.replace(year=base.year + 20)
+    except ValueError:  # Feb 29 filing
+        est = base + _timedelta(days=20 * 365 + 5)
+    return f"{est.isoformat()} (est.)"

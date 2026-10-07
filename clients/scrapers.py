@@ -540,8 +540,22 @@ def parse_google_patent_html(html: str) -> dict | None:
     if filed and filed != "[?]":
         filed = filed[:10]
 
-    status_el = soup.select_one("[itemprop='status'], .status, .legal-status")
+    status_el = soup.select_one(
+        "[itemprop='status'], [itemprop='legalStatus'], .status, .legal-status"
+    )
     status = status_el.get_text(separator=" ", strip=True) if status_el else "UNKNOWN"
+
+    # Family size: rows in the "Also Published As" table (other family members).
+    family_rows = soup.select("[itemprop='docdbFamily']")
+
+    # Adjusted/anticipated expiration (present on granted US/EP patents).
+    expires = "[?]"
+    exp_el = soup.select_one("[itemprop='expiration'], [itemprop='ifiExpiration']")
+    if exp_el:
+        raw_exp = exp_el.get("datetime") or exp_el.get_text(separator=" ", strip=True)
+        from core.models import normalize_date as _norm
+
+        expires = _norm(raw_exp)
 
     claims: list[str] = []
     claim_els = soup.select("[itemprop='claims'], .patent-claims")
@@ -566,12 +580,20 @@ def parse_google_patent_html(html: str) -> dict | None:
             if src:
                 image_urls.append(src)
 
+    dates_out: dict = {}
+    if filed != "[?]":
+        dates_out["filed"] = filed
+    if expires != "[?]":
+        dates_out["expires"] = expires
+    if family_rows:
+        dates_out["family_count"] = str(len(family_rows) + 1)  # +1 = this patent
+
     return {
         "id": pn or "UNKNOWN",
         "title": title,
         "assignee": assignee,
         "abstract": abstract,
-        "dates": {"filed": filed} if filed != "[?]" else {},
+        "dates": dates_out,
         "status": status[:20],
         "claims": claims,
         "image_urls": image_urls,
@@ -807,9 +829,16 @@ def _needs_enrichment(rec: PatentRecord) -> bool:
     )
 
 
-async def enrich_via_google(record: PatentRecord) -> PatentRecord:
-    """Fill missing fields from the patent's Google Patents page."""
-    if not _needs_enrichment(record) or not record.id:
+async def enrich_via_google(record: PatentRecord, force: bool = False) -> PatentRecord:
+    """Fill missing fields from the patent's Google Patents page.
+
+    With ``force=True`` the fetch happens even when title/filed are present,
+    e.g. to complete dates (expires, family_count) for records that came
+    from the cheap XHR search path.
+    """
+    if not record.id:
+        return record
+    if not force and not _needs_enrichment(record):
         return record
     try:
         scraper = GooglePatentsScraper()
@@ -830,6 +859,13 @@ async def enrich_via_google(record: PatentRecord) -> PatentRecord:
         filed = parsed.get("dates", {}).get("filed", "[?]")
         if filed != "[?]":
             record.dates = {**record.dates, "filed": filed}
+        for key in ("expires", "family_count"):
+            val = parsed.get("dates", {}).get(key)
+            if val and val != "[?]" and record.dates.get(key, "[?]") in ("[?]", None):
+                record.dates[key] = val
+        parsed_status = parsed.get("status", "UNKNOWN")
+        if parsed_status not in ("UNKNOWN", "", "[?]"):
+            record.status = parsed_status
         if parsed.get("abstract", "[?]") not in ("[?]", ""):
             record.abstract = parsed["abstract"]
         claims = parsed.get("claims") or []

@@ -128,30 +128,42 @@ Formats: `json`, `csv`, `bibtex`, `markdown`, `pdf`.
 
 ```
 recon/
-├── cli/main.py          — Typer CLI (search, run, config, export, collection)
+├── cli/                 — Typer CLI (main: search/run/config/collection, export, download)
 ├── core/
 │   ├── models.py        — PatentRecord, CrossReference dataclasses
-│   ├── search.py        — Multi-source search orchestration + source filtering
+│   ├── search.py        — Multi-source search orchestration + GP enrichment + source filtering
+│   ├── enrichment.py    — Cross-reference intelligence (NIH/NSF/DOE/SEC/arXiv/OpenAlex)
 │   ├── scoring.py       — Signal scoring (equal-weight algorithm)
+│   ├── metrics.py       — Scoring metrics & contribution breakdown
 │   ├── arbitrage.py     — Arbitrage status calculation
-│   ├── citations.py     — Citation graph fetching (Google Patents scrape + mock)
+│   ├── citations.py     — Citation graph fetching (Google Patents scrape)
 │   ├── translation.py   — Local Ollama translation with cache
-│   └── config.py        — Config management (.env + JSON)
+│   ├── intelligence.py  — Signal aggregation helpers
+│   ├── ai.py            — Opt-in local AI (synthesis mode)
+│   └── config.py        — Config management (~/.config/recon/config.toml)
 ├── clients/
-│   ├── patent_apis.py   — USPTO, PatSnap, Google, WIPO, Lens, EPO clients
-│   └── base.py          — BaseAsyncClient with rate-limit + backoff
+│   ├── patent_apis.py   — USPTO, EPO, WIPO, Lens, Google Patents API clients
+│   ├── scrapers.py      — Keyless DDG + Google Patents XHR scraping & enrichment
+│   ├── base.py          — BaseAsyncClient with rate-limit + backoff
+│   ├── base_scraper.py  — Shared scraping plumbing
+│   └── circuit_breaker.py — Per-source failure isolation
 ├── tui/
-│   ├── app.py           — Textual App + CSS
+│   ├── app.py           — Textual App, Tokyo Night theme, light/dark autodetect
 │   ├── screens.py       — SearchScreen, DetailScreen, ReaderModeScreen, etc.
-│   └── widgets/         — ResultList, InfoTab, ClaimsTab, ImageTab, CitationTree
+│   └── widgets/         — ResultList, Info/Claims/Image tabs, CitationTree,
+│                          CommandPalette, AlertBanner, Sixel/Kitty image rendering
 ├── storage/
-│   └── cache.py         — SQLite cache (search results, collection, translations)
-└── tests/               — 200+ tests (pytest)
+│   ├── cache.py         — SQLite cache (search results, collection, translations)
+│   └── migrate.py       — Schema migrations
+└── tests/               — 262 tests (pytest)
 ```
+
+The full design history — original interface mockup, constitution, and every accepted
+decision — lives in [docs/DESIGN_HISTORY.md](docs/DESIGN_HISTORY.md).
 
 ## Configuration
 
-Keys are stored in `~/.config/recon/config.json` (chmod 600):
+Keys are stored in `~/.config/recon/config.toml` (chmod 600):
 
 | Variable | Source | Required |
 |----------|--------|----------|
