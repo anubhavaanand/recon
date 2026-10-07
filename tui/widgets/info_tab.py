@@ -1,7 +1,7 @@
 from rich.markup import escape
 from textual.widgets import Static
 
-from core.models import PatentRecord
+from core.models import PatentRecord, estimate_expiration
 from core.scoring import calculate_signal_score
 
 
@@ -130,6 +130,8 @@ class InfoTab(Static):
             lines.append(f"  [bold dim]STATUS[/]   {status}")
             lines.append(f"  [bold dim]ASSIGNEE[/] {assignee}")
             lines.append(f"  [bold dim]FILED[/]    {date_f}   [bold dim]FAMILY[/]  {family}")
+            expires = escape(str(estimate_expiration(record.dates, record.id)))
+            lines.append(f"  [bold dim]EXPIRES[/]  {expires}")
             lines.append("")
             lines.append(_rule("SIGNAL SCORE"))
             lines.append(f"  {score_bar}")
