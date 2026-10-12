@@ -755,9 +755,22 @@ class SearchScreen(Screen):
             if self._show_help or self._show_export or self._show_source_filter or self._show_sort:
                 footer.update("[cyan]↑↓[/] select  [cyan]⏎[/] confirm  [cyan]esc[/] close")
                 return
-            footer.update(self._FOOTER_CONTEXTS.get(self._active_tab, self._FOOTER_CONTEXTS["info"]))
+            footer.update(self._build_footer_line())
         except Exception:
             pass
+
+    def _build_footer_line(self) -> str:
+        """Compose the context-sensitive footer, prefixing Boolean constraints.
+
+        Mirrors the original Phase-2 mockup row `Mode: [Boolean ▼] AI: [OFF]` —
+        active field operators are shown persistently so the query mode is
+        always legible while browsing results.
+        """
+        base = self._FOOTER_CONTEXTS.get(self._active_tab, self._FOOTER_CONTEXTS["info"])
+        if self._active_query and getattr(self._active_query, "is_boolean", False):
+            desc = self._active_query.describe()
+            return f"[yellow]BOOL:[/] {escape(desc)}  │  {base}"
+        return base
 
     def _set_active_tab(self, tab: str) -> None:
         """Show the active tab widget, hide others."""

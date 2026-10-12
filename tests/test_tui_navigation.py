@@ -124,3 +124,33 @@ def test_reader_mode_status_line_method():
     content = screen._build_content()
     assert "US123456" in content
     assert "Test abstract" in content
+
+
+def test_search_screen_footer_with_bool_indicator():
+    """Footer shows BOOL: prefix when a boolean query is active."""
+    from core.query import parse_boolean_query
+
+    screen = SearchScreen()
+    screen._active_query = parse_boolean_query("ti:battery ab:lithium")
+    line = screen._build_footer_line()
+    assert "BOOL:" in line
+    assert "title:battery" in line
+    assert "abstract:lithium" in line
+
+
+def test_search_screen_footer_without_bool_indicator():
+    """Footer has no BOOL: prefix when query is plain (no field operators)."""
+    from core.query import parse_boolean_query
+
+    screen = SearchScreen()
+    screen._active_query = parse_boolean_query("battery lithium")
+    line = screen._build_footer_line()
+    assert "BOOL:" not in line
+
+
+def test_search_screen_footer_when_no_active_query():
+    """Footer has no BOOL: prefix when _active_query is None."""
+    screen = SearchScreen()
+    screen._active_query = None
+    line = screen._build_footer_line()
+    assert "BOOL:" not in line
