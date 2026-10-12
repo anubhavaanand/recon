@@ -224,7 +224,9 @@ class EPOClient(BaseAsyncClient):
                 parties = [parties]
             assignee = parties[0].get("applicant-name", {}).get("name", {}).get("$", "[?]") if parties else "[?]"
 
-            date_refs = biblio.get("publication-reference", {}).get("document-id", [])
+            date_refs = biblio.get("application-reference", {}).get("document-id", [])
+            if not date_refs:
+                date_refs = biblio.get("publication-reference", {}).get("document-id", [])
             if isinstance(date_refs, dict):
                 date_refs = [date_refs]
             filed = date_refs[0].get("date", {}).get("$", "[?]") if date_refs else "[?]"
