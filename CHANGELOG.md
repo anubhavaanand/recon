@@ -32,17 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- Boolean query mode in TUI footer: displays active `ti:/ab:/assignee:` constraints while browsing
-- EPO `application-reference` parsing for accurate filing dates (falls back to `publication-reference`)
-
-### Changed
-- EPO OPS API search now uses filing date from `application-reference` when available
-- Footer status bar shows `BOOL:` indicator when boolean query operators are active
-
 ### Fixed
+- `_build_footer_line()` method was missing from the bottom footer bar — `BOOL:` indicator only showed in the top status bar and disappeared on navigation. Now persists via proper `_build_footer_line` + `_refresh_footer` wiring.
 - Fixed EPO filing date accuracy — was incorrectly using publication date
-- Fixed boolean query constraint visibility in TUI status bar
 
 ### Security
 - None
