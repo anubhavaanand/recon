@@ -259,7 +259,7 @@ class ReaderModeScreen(Screen):
 
     def _status_line(self) -> str:
         total_claims = len(self.record.claims) if self.record and self.record.claims else 0
-        return f"Reader Mode │ {total_claims} claims │ (↑↓) scroll  (c)laims  (d)ownload  (s)ave  (Esc) back"
+        return f"Reader Mode │ {total_claims} claims │ (j/k) scroll  (t)ranslate  (Esc/q) back"
 
     def _build_content(self) -> str:
         if not self.record:
@@ -315,7 +315,7 @@ class ReaderModeScreen(Screen):
                 self.app.notify(translated, severity="error")
             else:
                 self.app.notify("Text already in English — no translation needed.")
-        self.app.notify("Translation complete.")
+        self.query_one("#reader_status", Static).update(self._status_line())
 
 
 # ══════════════════════════════════════════════
@@ -511,7 +511,6 @@ class DetailScreen(Screen):
             self.app.notify("No patent selected.")
             return
         self._show_translation = not self._show_translation
-        self.app.notify("Translation complete.")
 
 
 # ══════════════════════════════════════════════
@@ -612,6 +611,7 @@ class SearchScreen(Screen):
 
     _active_tab: reactive[str] = reactive("info")
     _synthesis_mode: reactive[bool] = reactive(False)
+    _active_query: object | None = None
 
     EXPORT_FORMATS = ["json", "csv", "bibtex", "markdown", "pdf"]
 
@@ -755,9 +755,21 @@ class SearchScreen(Screen):
             if self._show_help or self._show_export or self._show_source_filter or self._show_sort:
                 footer.update("[cyan]↑↓[/] select  [cyan]⏎[/] confirm  [cyan]esc[/] close")
                 return
-            footer.update(self._FOOTER_CONTEXTS.get(self._active_tab, self._FOOTER_CONTEXTS["info"]))
+            footer.update(self._build_footer_line())
         except Exception:
             pass
+
+    def _build_footer_line(self) -> str:
+        """Compose the context-sensitive footer, prefixing Boolean constraints.
+
+        Mirrors the original Phase-2 mockup row `Mode: [Boolean ▼] AI: [OFF]` —
+        active field operators are shown persistently so the query mode is
+        always legible while browsing results.
+        """
+        base = self._FOOTER_CONTEXTS.get(self._active_tab, self._FOOTER_CONTEXTS["info"])
+        if self._active_query and self._active_query.is_boolean:
+            return f"[yellow]BOOL:[/] {escape(self._active_query.describe())}  │  {base}"
+        return base
 
     def _set_active_tab(self, tab: str) -> None:
         """Show the active tab widget, hide others."""
@@ -963,16 +975,17 @@ class SearchScreen(Screen):
                 "ERR: No patents found. Try: 'battery' or 'solid state'"
             )
         else:
-            # Parse boolean query for footer indicator
+            # Parse boolean query for footer indicator (PRD: Mode: [Boolean ▼])
             from core.query import parse_boolean_query
-            bq = parse_boolean_query(query)
+
+            self._active_query = parse_boolean_query(query)
             bool_indicator = ""
-            if bq.is_boolean:
-                desc = bq.describe()
-                bool_indicator = f"  │  [yellow]BOOL:[/] {escape(desc)}"
+            if self._active_query.is_boolean:
+                bool_indicator = f"  │  [yellow]BOOL:[/] {escape(self._active_query.describe())}"
             self.query_one("#status_top", Static).update(
                 f"RECON  │  [bold]{escape(query)}[/]  │  {count} results{src_info}{semantic_info}{bool_indicator}  │  sort: {self._sort_mode}"
             )
+            self._refresh_footer()
 
         if self._results:
             result_list.index = 0
@@ -1362,9 +1375,18 @@ class SearchScreen(Screen):
         for i, record in enumerate(self._results, 1):
             result_list.mount(ResultListItem(record, i))
 
-        self.query_one("#status_top", Static).update(
-            str(self.query_one("#status_top", Static).content).replace(f"sort: {self._sort_mode}", "") + f"sort: {self._sort_mode}"
-        )
+        status = self.query_one("#status_top", Static)
+        current = str(status.content)
+        label = f"sort: {self._sort_mode}"
+        if f" {label}" in current:
+            updated = current.replace(f" {label}", "")
+        elif current.endswith(label):
+            updated = current[: -len(label)]
+        else:
+            updated = current
+        if updated and not updated.endswith(" "):
+            updated += " "
+        status.update(f"{updated}{label}".strip())
         if self._results:
             result_list.index = 0
             self._load_record(self._results[0])

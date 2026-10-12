@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+import tomli_w
+
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -57,9 +59,9 @@ class ConfigEncryption:
 
     def decrypt(self, ciphertext: str) -> str | None:
         if not ciphertext:
-            return ciphertext
+            return None
         if not ciphertext.startswith(_ENCRYPTION_PREFIX):
-            return ciphertext
+            return None
         key = self._derive_key()
         aesgcm = AESGCM(key)
         token = ciphertext.replace(_ENCRYPTION_PREFIX, "")
@@ -124,30 +126,30 @@ def save_config(cfg: Config) -> None:
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     crypto = ConfigEncryption()
 
-    lines = []
+    data: dict[str, object] = {}
 
     if cfg.uspto_api_key:
-        lines.append(f'uspto_api_key = "{crypto.encrypt(cfg.uspto_api_key)}"')
+        data["uspto_api_key"] = crypto.encrypt(cfg.uspto_api_key)
     if cfg.epo_consumer_key:
-        lines.append(f'epo_consumer_key = "{crypto.encrypt(cfg.epo_consumer_key)}"')
+        data["epo_consumer_key"] = crypto.encrypt(cfg.epo_consumer_key)
     if cfg.epo_consumer_secret:
-        lines.append(f'epo_consumer_secret = "{crypto.encrypt(cfg.epo_consumer_secret)}"')
+        data["epo_consumer_secret"] = crypto.encrypt(cfg.epo_consumer_secret)
     if cfg.lens_api_key:
-        lines.append(f'lens_api_key = "{crypto.encrypt(cfg.lens_api_key)}"')
+        data["lens_api_key"] = crypto.encrypt(cfg.lens_api_key)
     if cfg.patsnap_api_key:
-        lines.append(f'patsnap_api_key = "{crypto.encrypt(cfg.patsnap_api_key)}"')
+        data["patsnap_api_key"] = crypto.encrypt(cfg.patsnap_api_key)
     if cfg.deepseek_api_key:
-        lines.append(f'deepseek_api_key = "{crypto.encrypt(cfg.deepseek_api_key)}"')
+        data["deepseek_api_key"] = crypto.encrypt(cfg.deepseek_api_key)
     if cfg.nvidia_nim_api_key:
-        lines.append(f'nvidia_nim_api_key = "{crypto.encrypt(cfg.nvidia_nim_api_key)}"')
+        data["nvidia_nim_api_key"] = crypto.encrypt(cfg.nvidia_nim_api_key)
 
-    lines.append(f'nomic_consent_given = {"true" if cfg.nomic_consent_given else "false"}')
-    lines.append(f'semantic_search_enabled = {"true" if cfg.semantic_search_enabled else "false"}')
-    lines.append(f'ai_translation_enabled = {"true" if cfg.ai_translation_enabled else "false"}')
-    lines.append(f'terminal_detection_seen = {"true" if cfg.terminal_detection_seen else "false"}')
-    lines.append(f'terminal_protocol = "{cfg.terminal_protocol}"')
+    data["nomic_consent_given"] = cfg.nomic_consent_given
+    data["semantic_search_enabled"] = cfg.semantic_search_enabled
+    data["ai_translation_enabled"] = cfg.ai_translation_enabled
+    data["terminal_detection_seen"] = cfg.terminal_detection_seen
+    data["terminal_protocol"] = cfg.terminal_protocol
 
-    with open(CONFIG_PATH, "w") as f:
-        f.write("\n".join(lines) + "\n")
+    with open(CONFIG_PATH, "wb") as f:
+        tomli_w.dump(data, f)
 
     os.chmod(CONFIG_PATH, 0o600)

@@ -33,15 +33,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Boolean query mode in TUI footer: displays active `ti:/ab:/assignee:` constraints while browsing
-- EPO `application-reference` parsing for accurate filing dates (falls back to `publication-reference`)
+- Boolean query mode in TUI footer: displays active `ti:/ab:/assignee:` constraints while browsing result sets
+- `EXPIRES` row in info tab powered by `estimate_expiration()` from Google Patents legal-status parsing
+- Expiration date + family count enrichment via Google Patents detail page parsing (`[itemprop='ifiExpiration']`, `[itemprop='docdbFamily']`)
 
 ### Changed
-- EPO OPS API search now uses filing date from `application-reference` when available
-- Footer status bar shows `BOOL:` indicator when boolean query operators are active
+- EPO OAuth token is now cached at the class level (`_token`/`_token_expiry`) instead of shadowed on each instance, so the client-credentials grant is shared across fresh EPOClient instances created per `search_all()` call
+- EPO `application-reference` parsing for accurate filing dates (falls back to `publication-reference`)
+- Footer status bar shows `BOOL:` indicator when boolean query operators are active, preserving constraint visibility while browsing
 
 ### Fixed
-- Fixed EPO filing date accuracy — was incorrectly using publication date
+- Google Patents legal-status parser was selecting the wrong attribute (`[itemprop='status']` → `[itemprop='legalStatus']`), returning `[?]` for all patents
+- EPO filing date accuracy — was incorrectly using publication date from `publication-reference` only
+- Removed orphaned legacy `EPOClient.search()` stub that collided with the API-first pipeline
 - Fixed boolean query constraint visibility in TUI status bar
 
 ### Security

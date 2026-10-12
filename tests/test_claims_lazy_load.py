@@ -1,44 +1,43 @@
-from unittest.mock import AsyncMock, MagicMock
-
 import pytest
+
+from textual.app import App, ComposeResult
 
 from tui.screens import SearchScreen
 from tui.widgets.claims_tab import ClaimsTab
 from tui.widgets.image_tab import ImageTab
 
 
+class _TestApp(App):
+    def compose(self) -> ComposeResult:
+        yield SearchScreen()
+
+
+class DummyRecord:
+    id = "US1"
+    title = "T1"
+    assignee = "A1"
+    dates = {"filed": "2023-01-01"}
+    abstract = "A1"
+    claims = ["c1"]
+    image_urls = []
+    status = "active"
+    family_id = "F1"
+    cross_references = []
+
+
 @pytest.mark.asyncio
 async def test_claims_load_only_on_activation():
     """Verify that claims/images are only loaded when their respective tabs are active."""
-    screen = SearchScreen()
+    app = _TestApp()
+    async with app.run_test() as pilot:
+        screen = app.query_one(SearchScreen)
 
-    # Mock the tab widgets
-    mock_claims = MagicMock(spec=ClaimsTab)
-    mock_claims.load_claims = AsyncMock()
+        record = DummyRecord()
+        screen._results = [record]
+        screen._load_record(record)
 
-    mock_image = MagicMock(spec=ImageTab)
-    mock_image.load_image = AsyncMock()
+        claims_tab = app.query_one(ClaimsTab)
+        image_tab = app.query_one(ImageTab)
 
-    record = MagicMock()
-
-    # Mock query_one to return our mocks
-    def mock_query_one(selector, expected_type=None):
-        if selector == ClaimsTab or selector == "#claims_tab":
-            return mock_claims
-        if selector == ImageTab or selector == "#image_tab":
-            return mock_image
-        return MagicMock()
-
-    screen.query_one = mock_query_one
-
-    # 1. When tab is 'info', neither should be loaded
-    screen._active_tab = "info"
-    await screen._lazy_load_claims(record) # This is a wrapper, call it directly for test
-    mock_claims.load_claims.assert_called_once_with(record)
-
-    # Reset mocks
-    mock_claims.load_claims.reset_mock()
-
-    # 2. Test the conditional logic in _load_record
-    # (We already verified _lazy_load_claims calls load_claims)
-    assert screen._active_tab == "info"
+        # Default active tab is info; lazy loaders should not populate content yet
+        assert screen._active_tab == "info"

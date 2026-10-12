@@ -6,7 +6,7 @@ from core.search import search_all
 from storage.cache import CacheDatabase
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_search_all_with_mocked_clients(monkeypatch, tmp_path):
     mock_config_dir = tmp_path / ".config" / "recon"
     mock_config_dir.mkdir(parents=True)

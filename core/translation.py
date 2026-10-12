@@ -12,7 +12,13 @@ import sqlite3
 
 import httpx
 
-_CACHE_DB = "recon_cache.db"
+from pathlib import Path
+
+from core.config import CONFIG_PATH
+
+_CACHE_DIR = CONFIG_PATH.parent / "cache"
+_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+_CACHE_DB = str(_CACHE_DIR / "translation_cache.db")
 
 
 def _is_non_english(text: str) -> bool:
@@ -92,14 +98,20 @@ async def translate_text(text: str, target_language: str = "English") -> str:
 
     from core.config import load_config
     cfg = load_config()
-    if cfg.deepseek_api_key:
-        translated = await _translate_via_deepseek(text, prompt, cfg.deepseek_api_key)
+    try:
+        if cfg.deepseek_api_key:
+            translated = await _translate_via_deepseek(text, prompt, cfg.deepseek_api_key)
+            if translated is not None:
+                return f"[t]{translated}"
+    except Exception:
+        pass
+
+    try:
+        translated = await _translate_via_ollama(text, prompt)
         if translated is not None:
             return f"[t]{translated}"
-
-    translated = await _translate_via_ollama(text, prompt)
-    if translated is not None:
-        return f"[t]{translated}"
+    except Exception:
+        pass
 
     return text
 

@@ -519,13 +519,30 @@ class CacheDatabase:
             ).fetchone()
             return dict(row) if row else None
 
+    _ALLOWED_API_METADATA_FIELDS = {
+        "base_url",
+        "auth_type",
+        "rate_limit_per_minute",
+        "actual_limit_used",
+        "requests_this_hour",
+        "last_request_at",
+        "last_error_at",
+        "last_error_code",
+        "consecutive_errors",
+        "circuit_open",
+        "api_key_masked",
+    }
+
     def upsert_api_metadata(self, source_name: str, **kwargs) -> None:
-        values = list(kwargs.values())
+        allowed = {k: v for k, v in kwargs.items() if k in self._ALLOWED_API_METADATA_FIELDS}
+        if not allowed:
+            return
+        values = list(allowed.values())
         with contextlib.closing(self.get_connection()) as conn:
             with conn:
                 conn.execute(
-                    f"INSERT OR REPLACE INTO api_metadata (source_name, {', '.join(kwargs.keys())}) "
-                    f"VALUES (?, {', '.join('?' for _ in kwargs)})",
+                    f"INSERT OR REPLACE INTO api_metadata (source_name, {', '.join(allowed.keys())}) "
+                    f"VALUES (?, {', '.join('?' for _ in allowed)})",
                     (source_name, *values),
                 )
 
@@ -560,9 +577,20 @@ class CacheDatabase:
                     (session_id,),
                 )
 
+    _ALLOWED_TERMINAL_SESSION_FIELDS = {
+        "query_text",
+        "selected_index",
+        "active_tab",
+        "screen_name",
+        "is_active",
+    }
+
     def update_terminal_session(self, session_id: str, **kwargs) -> None:
-        fields = ", ".join(f"{k} = ?" for k in kwargs)
-        values = list(kwargs.values())
+        allowed = {k: v for k, v in kwargs.items() if k in self._ALLOWED_TERMINAL_SESSION_FIELDS}
+        if not allowed:
+            return
+        fields = ", ".join(f"{k} = ?" for k in allowed)
+        values = list(allowed.values())
         with contextlib.closing(self.get_connection()) as conn:
             with conn:
                 conn.execute(
@@ -676,10 +704,11 @@ class CacheDatabase:
                     )
                     stats["deleted_lru"] = cursor.rowcount
 
+            with contextlib.closing(self.get_connection()) as conn:
                 conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
 
-                vacuum_result = self.vacuum()
-                stats["vacuum_freed_mb"] = round(vacuum_result["freed_bytes"] / (1024 * 1024), 2)
+            vacuum_result = self.vacuum()
+            stats["vacuum_freed_mb"] = round(vacuum_result["freed_bytes"] / (1024 * 1024), 2)
 
         return stats
 

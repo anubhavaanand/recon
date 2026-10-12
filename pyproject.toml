@@ -36,6 +36,7 @@ dependencies = [
     "ddgs>=0.14.0",
     "rich>=13.7.1",
     "cryptography>=41.0",
+    "tomli-w>=1.0",
 ]
 
 [project.urls]
@@ -61,7 +62,7 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["recon*", "cli", "tui", "core", "clients", "storage", "tui.widgets"]
+include = ["recon*", "cli", "tui", "core", "clients", "storage"]
 
 [project.scripts]
 recon = "cli.main:app"

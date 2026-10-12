@@ -24,7 +24,7 @@ from core.models import CrossReference
 # ── Signal source categories ─────────────────────────────
 _GRANT_SOURCES   = {"nih", "nsf", "doe", "nih reporter", "nsf awards"}
 _CORP_SOURCES    = {"sec", "edgar", "10-k", "8-k"}
-_ACADEMIC_SOURCES = {"openalex", "arxiv", "openalexs", "arxiv preprints"}
+_ACADEMIC_SOURCES = {"openalex", "arxiv"}
 _SUPPLY_SOURCES  = {"opencorporates", "supply chain", "duns"}
 
 _TEMPORAL_WINDOW = timedelta(days=730)  # 2 years
