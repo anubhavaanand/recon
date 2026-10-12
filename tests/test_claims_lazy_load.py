@@ -1,5 +1,4 @@
 import pytest
-
 from textual.app import App, ComposeResult
 
 from tui.screens import SearchScreen
@@ -29,15 +28,15 @@ class DummyRecord:
 async def test_claims_load_only_on_activation():
     """Verify that claims/images are only loaded when their respective tabs are active."""
     app = _TestApp()
-    async with app.run_test() as pilot:
+    async with app.run_test():
         screen = app.query_one(SearchScreen)
 
         record = DummyRecord()
         screen._results = [record]
         screen._load_record(record)
 
-        claims_tab = app.query_one(ClaimsTab)
-        image_tab = app.query_one(ImageTab)
+        app.query_one(ClaimsTab)
+        app.query_one(ImageTab)
 
         # Default active tab is info; lazy loaders should not populate content yet
         assert screen._active_tab == "info"

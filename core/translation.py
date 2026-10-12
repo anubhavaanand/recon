@@ -12,8 +12,6 @@ import sqlite3
 
 import httpx
 
-from pathlib import Path
-
 from core.config import CONFIG_PATH
 
 _CACHE_DIR = CONFIG_PATH.parent / "cache"

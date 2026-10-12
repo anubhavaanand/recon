@@ -14,9 +14,8 @@ from typing import Optional
 
 import httpx
 
-from core.models import PatentRecord
-
 from clients.base import BaseAsyncClient
+from core.models import PatentRecord
 
 ROTATING_USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
@@ -42,14 +41,6 @@ ROTATING_USER_AGENTS = [
     "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:126.0) Gecko/20100101 Firefox/126.0",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
 ]
-
-
-class RateLimitedError(Exception):
-    """Raised when a scraper source returns a rate-limit response (429)."""
-
-
-class SourceDisabledError(Exception):
-    """Raised when a source has been disabled by the circuit breaker."""
 
 
 class RateLimitedError(Exception):

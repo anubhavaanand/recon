@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Optional
 
 import tomli_w
-
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
