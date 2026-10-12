@@ -14,6 +14,7 @@ from typing import Optional
 
 import httpx
 
+from clients.base import BaseAsyncClient
 from core.models import PatentRecord
 
 ROTATING_USER_AGENTS = [
@@ -50,16 +51,6 @@ class SourceDisabledError(Exception):
     """Raised when a source has been disabled by the circuit breaker."""
 
 
-_shared_client: Optional[httpx.AsyncClient] = None
-
-
-async def _get_client() -> httpx.AsyncClient:
-    global _shared_client
-    if _shared_client is None or _shared_client.is_closed:
-        _shared_client = httpx.AsyncClient(timeout=30.0, follow_redirects=True)
-    return _shared_client
-
-
 _DDG_SEMAPHORE = asyncio.Semaphore(2)
 
 
@@ -79,6 +70,9 @@ class BaseScraper(ABC):
     async def fetch(self, patent_id: str) -> PatentRecord | None:
         """Fetch a single patent by ID. Subclasses must implement."""
 
+    async def _get_client(self) -> httpx.AsyncClient:
+        return await BaseAsyncClient.get_client()
+
     async def _rate_limited_request(
         self, url: str, *, source: str = "", is_ddg: bool = False, timeout: float = 15.0
     ) -> httpx.Response:
@@ -86,7 +80,7 @@ class BaseScraper(ABC):
         if self._disabled:
             raise SourceDisabledError(f"{source or self.source_name} is circuit-broken")
 
-        client = await _get_client()
+        client = await self._get_client()
         headers = {
             "User-Agent": random.choice(ROTATING_USER_AGENTS),
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",

@@ -46,6 +46,16 @@ async def test_epo_search_no_keys_falls_to_mock(monkeypatch):
     assert "EP123" in results[0].id
 
 
+@pytest.fixture(autouse=True)
+def reset_epo_token_cache():
+    """Reset EPO class-level token cache between tests."""
+    EPOClient._access_token = None
+    EPOClient._token_expiry = 0.0
+    yield
+    EPOClient._access_token = None
+    EPOClient._token_expiry = 0.0
+
+
 @pytest.mark.asyncio
 async def test_epo_search_valid_keys_uses_api(monkeypatch):
     """When valid EPO keys configured, use OPS API."""

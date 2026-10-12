@@ -197,4 +197,6 @@ pytest
 
 ## License
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-38BDF8.svg)](LICENSE)
+
 MIT

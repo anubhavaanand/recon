@@ -29,5 +29,10 @@ jobs:
     - name: Build package
       run: python -m build
       
+    - name: Validate package metadata
+      run: |
+        python -c "import recon; print(recon.__version__)" || true
+        twine check dist/* || pip install twine && twine check dist/*
+       
     - name: Publish package to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1

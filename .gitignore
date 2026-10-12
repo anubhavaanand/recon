@@ -6,8 +6,9 @@ __pycache__/
 dist/
 build/
 .env
+.env.local
 .DS_Store
-.gemini
+.gemini/
 recon_cache.db
 scratch/
 tests/.benchmarks/
@@ -24,4 +25,9 @@ PHASE_C_EXECUTION_PLAN.md
 RECON_PRD_v1.0.0.md
 tasks.md
 recon plan docs/
-AGENTS.md
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+*.db
+*.key

@@ -22,6 +22,9 @@ class TerminalProtocol(Enum):
     FALLBACK = "Fallback (external viewer)"
 
 
+_TEXT_ONLY_CONFIG = "none"
+
+
 def detect_terminal_protocol() -> TerminalProtocol:
     term         = os.environ.get("TERM", "").lower()
     term_program = os.environ.get("TERM_PROGRAM", "").lower()
@@ -216,7 +219,7 @@ class ImageTab(Static):
         from core.config import load_config
         config = load_config()
 
-        if config.terminal_protocol == "none":
+        if config.terminal_protocol == _TEXT_ONLY_CONFIG:
             body = "INFO: Figure rendering disabled (Text-only mode selected).\nAction: Press Enter on detection screen to change."
         elif protocol in (TerminalProtocol.KITTY, TerminalProtocol.ITERM2, TerminalProtocol.SIXEL):
             loading_msg = (

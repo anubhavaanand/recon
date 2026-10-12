@@ -107,7 +107,7 @@ async def search_all(query: str, sources: Optional[List[str]] = None) -> List[Pa
     client_query = to_keyword_query(bq) if bq.is_boolean else query
 
     db = CacheDatabase()
-    cached = db.get_cached_search(query)
+    cached = db.get_cached_search(query) if sources is None else None
     if cached:
         return sort_and_merge_results(apply_boolean_filter(cached, query))
 

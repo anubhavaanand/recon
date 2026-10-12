@@ -113,7 +113,7 @@ def normalize_date(raw) -> str:
             return "[?]"
     for fmt in ("%Y%m%d", "%d.%m.%Y", "%m/%d/%Y", "%B %d, %Y", "%Y-%m"):
         try:
-            return _dt.strptime(s[:14].strip(), fmt).strftime("%Y-%m-%d")
+            return _dt.strptime(s.strip(), fmt).strftime("%Y-%m-%d")
         except ValueError:
             continue
     y = _re.match(r"^(19|20)\d{2}", s)

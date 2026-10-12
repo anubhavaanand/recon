@@ -89,11 +89,12 @@ class EPOClient(BaseAsyncClient):
     invalid, or the API returns any error.
     """
 
+    _access_token: str | None = None
+    _token_expiry: float = 0.0
+
     def __init__(self):
         super().__init__(base_url="https://ops.epo.org/3.2", timeout=30.0)
         self.config = load_config()
-        self.access_token: str | None = None
-        self.token_expiry: float = 0
         # EPO Rate limit: 3/sec (24% headroom)
         self.rate_limit_delay = 1.0 / (3.0 * 0.76)
 
@@ -101,9 +102,11 @@ class EPOClient(BaseAsyncClient):
         """Obtain a Bearer token via OAuth 2.0 Client Credentials grant.
 
         Returns the token string, or None if keys are missing/invalid.
+        Tokens are cached at the class level so the grant is shared across
+        fresh EPOClient instances that search_all() builds per call.
         """
-        if self.access_token and time.time() < self.token_expiry:
-            return self.access_token
+        if type(self)._access_token and time.time() < type(self)._token_expiry:
+            return type(self)._access_token
 
         key = self.config.epo_consumer_key
         secret = self.config.epo_consumer_secret
@@ -127,12 +130,12 @@ class EPOClient(BaseAsyncClient):
             if response.status_code != 200:
                 return None
             data = response.json()
-            self.access_token = data.get("access_token")
+            type(self)._access_token = data.get("access_token")
             expires_in = int(data.get("expires_in", 1200))
-            self.token_expiry = time.time() + expires_in - 60
-            return self.access_token
+            type(self)._token_expiry = time.time() + expires_in - 60
+            return type(self)._access_token
         except Exception:
-            self.access_token = None
+            type(self)._access_token = None
             return None
 
     async def validate_credentials(self) -> tuple[bool, str]:
@@ -142,7 +145,6 @@ class EPOClient(BaseAsyncClient):
         if not key or not secret:
             return False, "Missing/invalid keys. Falling back to scraper."
 
-        self.access_token = None
         token = await self._get_access_token()
         if token:
             return True, "EPO API Key is VALID."
@@ -222,21 +224,14 @@ class EPOClient(BaseAsyncClient):
                 parties = [parties]
             assignee = parties[0].get("applicant-name", {}).get("name", {}).get("$", "[?]") if parties else "[?]"
 
-            def _extract_document_date(refs):
-                if not refs:
-                    return "[?]"
-                raw = refs[0].get("date", {}).get("$", "[?]")
-                if raw != "[?]" and len(str(raw)) == 8:
-                    return f"{str(raw)[:4]}-{str(raw)[4:6]}-{str(raw)[6:]}"
-                return "[?]"
-
-            app_refs = biblio.get("application-reference", {}).get("document-id", [])
-            if isinstance(app_refs, dict):
-                app_refs = [app_refs]
-            pub_refs = biblio.get("publication-reference", {}).get("document-id", [])
-            if isinstance(pub_refs, dict):
-                pub_refs = [pub_refs]
-            filed = _extract_document_date(app_refs) if app_refs else _extract_document_date(pub_refs)
+            date_refs = biblio.get("application-reference", {}).get("document-id", [])
+            if not date_refs:
+                date_refs = biblio.get("publication-reference", {}).get("document-id", [])
+            if isinstance(date_refs, dict):
+                date_refs = [date_refs]
+            filed = date_refs[0].get("date", {}).get("$", "[?]") if date_refs else "[?]"
+            if filed != "[?]" and len(filed) == 8:
+                filed = f"{filed[:4]}-{filed[4:6]}-{filed[6:]}"
 
             records.append(PatentRecord(
                 id=pid,
@@ -253,21 +248,9 @@ class EPOClient(BaseAsyncClient):
         return records
 
     async def _search_epo_duckduckgo(self, query: str) -> List[PatentRecord]:
-        """Fallback: mock data when API is unavailable."""
-        print(f"INFO: Source [EPO] using mock data for '{query}'.")
-        return [
-            PatentRecord(
-                id=f"EP-MOCK-{query[:4].upper()}",
-                title=f"EPO Result for {query}",
-                assignee="EPO Assignee GmbH",
-                dates={"filed": "2023-06-15"},
-                abstract=f"A European patent related to {query}.",
-                claims=[],
-                image_urls=[],
-                status="active",
-                family_id="F-EPO-1",
-            ),
-        ]
+        """Fallback: no mock data. Return empty results when API is unavailable."""
+        print("ERR: Source [EPO] unavailable via DDG fallback. No results returned.")
+        return []
 
 class LensClient(BaseAsyncClient):
     """Lens.org client using DuckDuckGo discovery + snippet parsing.
