@@ -89,11 +89,12 @@ class EPOClient(BaseAsyncClient):
     invalid, or the API returns any error.
     """
 
+    _access_token: str | None = None
+    _token_expiry: float = 0.0
+
     def __init__(self):
         super().__init__(base_url="https://ops.epo.org/3.2", timeout=30.0)
         self.config = load_config()
-        self.access_token: str | None = None
-        self.token_expiry: float = 0
         # EPO Rate limit: 3/sec (24% headroom)
         self.rate_limit_delay = 1.0 / (3.0 * 0.76)
 
@@ -101,9 +102,11 @@ class EPOClient(BaseAsyncClient):
         """Obtain a Bearer token via OAuth 2.0 Client Credentials grant.
 
         Returns the token string, or None if keys are missing/invalid.
+        Tokens are cached at the class level so the grant is shared across
+        fresh EPOClient instances that search_all() builds per call.
         """
-        if self.access_token and time.time() < self.token_expiry:
-            return self.access_token
+        if type(self)._access_token and time.time() < type(self)._token_expiry:
+            return type(self)._access_token
 
         key = self.config.epo_consumer_key
         secret = self.config.epo_consumer_secret
@@ -127,12 +130,12 @@ class EPOClient(BaseAsyncClient):
             if response.status_code != 200:
                 return None
             data = response.json()
-            self.access_token = data.get("access_token")
+            type(self)._access_token = data.get("access_token")
             expires_in = int(data.get("expires_in", 1200))
-            self.token_expiry = time.time() + expires_in - 60
-            return self.access_token
+            type(self)._token_expiry = time.time() + expires_in - 60
+            return type(self)._access_token
         except Exception:
-            self.access_token = None
+            type(self)._access_token = None
             return None
 
     async def validate_credentials(self) -> tuple[bool, str]:
@@ -142,7 +145,6 @@ class EPOClient(BaseAsyncClient):
         if not key or not secret:
             return False, "Missing/invalid keys. Falling back to scraper."
 
-        self.access_token = None
         token = await self._get_access_token()
         if token:
             return True, "EPO API Key is VALID."

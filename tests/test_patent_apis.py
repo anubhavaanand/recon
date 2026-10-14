@@ -13,6 +13,16 @@ from core.config import Config
 from core.models import PatentRecord
 
 
+@pytest.fixture(autouse=True)
+def reset_epo_token_cache():
+    """Reset EPO class-level token cache between tests."""
+    EPOClient._access_token = None
+    EPOClient._token_expiry = 0.0
+    yield
+    EPOClient._access_token = None
+    EPOClient._token_expiry = 0.0
+
+
 @pytest.mark.asyncio
 async def test_uspto_search_mocked(monkeypatch):
     monkeypatch.setattr("clients.patent_apis.load_config", lambda: Config(uspto_api_key="TEST"))
